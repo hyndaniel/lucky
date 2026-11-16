@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 120" role="img" aria-labelledby="title desc">
+  <title id="title">BONDING</title>
+  <desc id="desc">BONDING wordmark</desc>
+  <rect width="520" height="120" rx="12" fill="#fffdfb"/>
+  <path d="M34 22h28c20 0 32 9 32 24 0 9-5 16-13 20 11 4 17 12 17 23 0 19-14 29-38 29H34V22Zm25 39c8 0 12-4 12-10s-4-9-12-9h-1v19h1Zm2 36c10 0 15-4 15-12 0-8-5-12-15-12h-3v24h3Z" fill="#d86632"/>
+  <text x="112" y="79" fill="#d86632" font-family="Georgia, Times New Roman, serif" font-size="54" font-weight="700" letter-spacing="8">ONDING</text>
+  <path d="M112 96h370" stroke="#d86632" stroke-width="3" opacity=".45"/>
+</svg>

@@ -4,6 +4,30 @@ import { nanoid } from 'nanoid';
 import Papa from 'papaparse';
 import type { Participant, Winner, Prize, Settings } from '../lib/types';
 import { drawWinners } from '../lib/lottery-logic';
+import bondingLogo from '../assets/bonding-logo.svg';
+import hermesLogo from '../assets/hermes-logo.jpg';
+import { DEFAULT_PARTICIPANTS } from '../assets/default-participants';
+
+const INITIAL_PRIZES: Prize[] = [
+  { id: '1', name: '特等奖', count: 2 },
+  { id: '2', name: '一等奖', count: 6 },
+  { id: '3', name: '二等奖', count: 10 },
+  { id: '4', name: '三等奖', count: 20 },
+  { id: '5', name: '四等奖', count: 30 },
+  { id: '6', name: '五等奖', count: 40 },
+];
+
+const isLegacyDefaultPrizes = (prizes: Prize[]) => (
+  prizes.length === 3
+  && prizes[0]?.id === '1' && prizes[0]?.name === '三等奖' && prizes[0]?.count === 5
+  && prizes[1]?.id === '2' && prizes[1]?.name === '二等奖' && prizes[1]?.count === 3
+  && prizes[2]?.id === '3' && prizes[2]?.name === '一等奖' && prizes[2]?.count === 1
+);
+
+const cloneDefaultParticipants = (): Participant[] => DEFAULT_PARTICIPANTS.map((participant) => ({
+  ...participant,
+  bannedPrizes: [...participant.bannedPrizes],
+}));
 
 interface LotteryState {
   participants: Participant[];
@@ -20,7 +44,7 @@ interface LotteryState {
   
   // Actions
   importParticipants: (csvText: string, includeControlledFields?: boolean) => { success: boolean; count: number; error?: string };
-  addPrize: (name: string, count: number) => void;
+  addPrize: (prize: Omit<Prize, 'id'>) => void;
   updatePrize: (id: string, updates: Partial<Prize>) => void;
   removePrize: (id: string) => void;
   selectPrize: (id: string | null) => void;
@@ -32,6 +56,7 @@ interface LotteryState {
 
   resetWinners: () => void;
   fullReset: () => void;
+  restoreDefaultPrizes: () => void;
   setSettings: (settings: Partial<Settings>) => void;
   // CRUD
   addParticipant: (p: Omit<Participant, 'id'>) => void;
@@ -63,13 +88,9 @@ const deobfuscateData = (str: string): string => {
 export const useLotteryStore = create<LotteryState>()(
   persist(
     (set, get) => ({
-      participants: [],
+      participants: cloneDefaultParticipants(),
       winners: [],
-      prizes: [
-        { id: '1', name: '三等奖', count: 5 },
-        { id: '2', name: '二等奖', count: 3 },
-        { id: '3', name: '一等奖', count: 1 },
-      ],
+      prizes: INITIAL_PRIZES,
       currentPrizeId: '1',
       isRolling: false,
       roundWinners: [],
@@ -79,12 +100,14 @@ export const useLotteryStore = create<LotteryState>()(
         title: '2027 年会大屏抽奖',
         password: 'appinn',
         welcomeTitle: '2027 NEW YEAR PARTY',
-        welcomeSubtitle: '携手共进 · 再创辉煌',
+        welcomeSubtitle: 'BONDING',
         prizePageTitle: '奖项',
-        logo: '',
+        logo: hermesLogo,
         showDept: false,
         scrollMode: 'none',
         winnersPerPage: 24,
+        backgroundImage: '',
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       },
 
       importParticipants: (csvText: string, includeControlledFields: boolean = false) => {
@@ -136,8 +159,8 @@ export const useLotteryStore = create<LotteryState>()(
         }
       },
 
-      addPrize: (name, count) => set(state => ({
-        prizes: [...state.prizes, { id: nanoid(), name, count }]
+      addPrize: (prize) => set(state => ({
+        prizes: [...state.prizes, { id: nanoid(), ...prize }]
       })),
 
       updatePrize: (id, updates) => set(state => ({
@@ -231,9 +254,13 @@ export const useLotteryStore = create<LotteryState>()(
 
       resetWinners: () => set({ winners: [], roundWinners: [], isRolling: false }),
       
-      fullReset: () => set({ participants: [], winners: [], prizes: [], roundWinners: [], isRolling: false, currentPrizeId: null }),
+      fullReset: () => set({ participants: cloneDefaultParticipants(), winners: [], prizes: INITIAL_PRIZES, roundWinners: [], isRolling: false, currentPrizeId: '1' }),
 
-      setSettings: (newSettings) => set(state => ({ settings: { ...state.settings, ...newSettings } })),
+      restoreDefaultPrizes: () => set({ participants: cloneDefaultParticipants(), prizes: INITIAL_PRIZES, currentPrizeId: '1', roundWinners: [], isRolling: false }),
+
+      setSettings: (newSettings) => set(state => ({
+        settings: { ...state.settings, ...newSettings, welcomeSubtitle: 'BONDING' },
+      })),
 
       addParticipant: (p) => set(state => ({
         participants: [...state.participants, { ...p, id: nanoid() }]
@@ -249,6 +276,27 @@ export const useLotteryStore = create<LotteryState>()(
     }),
     {
       name: 'lucky-draw-storage',
+      version: 7,
+      migrate: (persistedState, version) => {
+        const state = persistedState as LotteryState;
+        // 将旧演示奖项或空奖项恢复为当前默认奖项，保留已有真实配置。
+        const hasNoDrawData = state.participants.length === 0 && state.winners.length === 0;
+        const persistedLogo = state.settings?.logo;
+        const fixedSettings = {
+          ...state.settings,
+          welcomeSubtitle: 'BONDING',
+          logo: !persistedLogo || persistedLogo === bondingLogo ? hermesLogo : persistedLogo,
+        };
+        const hasBundledParticipants = state.participants.length === DEFAULT_PARTICIPANTS.length
+          && state.participants.every((participant) => participant.id.startsWith('default-'));
+        if (hasNoDrawData && (isLegacyDefaultPrizes(state.prizes) || state.prizes.length === 0)) {
+          return { ...state, participants: cloneDefaultParticipants(), prizes: INITIAL_PRIZES, settings: fixedSettings };
+        }
+        if (hasNoDrawData && (state.participants.length === 0 || hasBundledParticipants)) {
+          return { ...state, participants: cloneDefaultParticipants(), settings: fixedSettings };
+        }
+        return { ...state, settings: fixedSettings };
+      },
       storage: createJSONStorage(() => ({
         getItem: (name) => {
           const val = localStorage.getItem(name);

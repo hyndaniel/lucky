@@ -21,6 +21,7 @@ import {
 import { toast } from "sonner";
 import { SAMPLE_CSV } from "@/assets/sample";
 import { cn } from "@/lib/utils";
+import hermesLogo from "@/assets/hermes-logo.jpg";
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
@@ -30,13 +31,20 @@ export default function AdminPage() {
   });
   const {
     participants, winners, prizes, settings, currentPrizeId, isRolling, roundWinners, viewMode,
-    importParticipants, fullReset, resetWinners,
+    importParticipants, fullReset, restoreDefaultPrizes, resetWinners,
     addPrize, updatePrize, removePrize, setSettings, selectPrize, setViewMode,
     startRolling, stopRolling,
     addParticipant, updateParticipant, removeParticipant
   } = useLotteryStore();
 
   const [csvText, setCsvText] = useState("");
+
+  // 兼容旧版本曾经保存过空奖项列表的浏览器数据。
+  useEffect(() => {
+    if (prizes.length === 0) {
+      restoreDefaultPrizes();
+    }
+  }, [prizes.length, restoreDefaultPrizes]);
 
 
   // 受控模式解锁：通过 URL 参数 ?controlled=1 解锁必中/禁中/权重功能
@@ -69,16 +77,18 @@ export default function AdminPage() {
   // Prize Edit State
   const [editingPrize, setEditingPrize] = useState<any>(null);
   const [isPrizeDialogOpen, setIsPrizeDialogOpen] = useState(false);
-  const [prizeForm, setPrizeForm] = useState({ name: "", count: 1, description: "" });
+  const [prizeForm, setPrizeForm] = useState({ name: "", count: "" as number | "", description: "", image: "" });
 
   // Settings Form State
   const [settingsForm, setSettingsForm] = useState({
     title: settings.title,
     welcomeTitle: settings.welcomeTitle,
-    welcomeSubtitle: settings.welcomeSubtitle,
+    welcomeSubtitle: 'BONDING',
     prizePageTitle: settings.prizePageTitle || '',
     password: settings.password,
-    logo: settings.logo || '',
+    logo: settings.logo || hermesLogo,
+    backgroundImage: settings.backgroundImage || '',
+    fontFamily: settings.fontFamily || "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     showDept: settings.showDept || false,
     scrollMode: settings.scrollMode || 'none',
     winnersPerPage: settings.winnersPerPage || 24,
@@ -89,15 +99,17 @@ export default function AdminPage() {
     setSettingsForm({
       title: settings.title,
       welcomeTitle: settings.welcomeTitle,
-      welcomeSubtitle: settings.welcomeSubtitle,
+      welcomeSubtitle: 'BONDING',
       prizePageTitle: settings.prizePageTitle || '',
       password: settings.password,
-      logo: settings.logo || '',
+      logo: settings.logo || hermesLogo,
+      backgroundImage: settings.backgroundImage || '',
+      fontFamily: settings.fontFamily || "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       showDept: settings.showDept || false,
       scrollMode: settings.scrollMode || 'none',
       winnersPerPage: settings.winnersPerPage || 24,
     });
-  }, [settings.title, settings.welcomeTitle, settings.welcomeSubtitle, settings.prizePageTitle, settings.password, settings.logo, settings.showDept, settings.scrollMode, settings.winnersPerPage]);
+  }, [settings.title, settings.welcomeTitle, settings.welcomeSubtitle, settings.prizePageTitle, settings.password, settings.logo, settings.backgroundImage, settings.fontFamily, settings.showDept, settings.scrollMode, settings.winnersPerPage]);
 
   // Search
   const [searchTerm, setSearchTerm] = useState("");
@@ -136,13 +148,52 @@ export default function AdminPage() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      setSettingsForm({ ...settingsForm, logo: base64 });
+      setSettingsForm(current => ({ ...current, logo: base64 }));
     };
     reader.readAsDataURL(file);
   };
 
   const handleRemoveLogo = () => {
-    setSettingsForm({ ...settingsForm, logo: '' });
+    setSettingsForm(current => ({ ...current, logo: '' }));
+  };
+
+  const handleBackgroundUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 背景图会持久化至 localStorage，避免单张图片占满浏览器配额。
+    if (file.size > 1500 * 1024) {
+      toast.error("背景图大小不能超过 1.5MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setSettingsForm(current => ({ ...current, backgroundImage: base64 }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveBackground = () => {
+    setSettingsForm(current => ({ ...current, backgroundImage: '' }));
+  };
+
+  const handlePrizeImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 800 * 1024) {
+      toast.error("奖品图片大小不能超过 800KB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setPrizeForm(current => ({ ...current, image: base64 }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleImport = () => {
@@ -327,7 +378,7 @@ export default function AdminPage() {
   // Prize edit functions
   const openAddPrizeDialog = () => {
     setEditingPrize(null);
-    setPrizeForm({ name: "", count: 1, description: "" });
+    setPrizeForm({ name: "", count: "", description: "", image: "" });
     setIsPrizeDialogOpen(true);
   };
 
@@ -336,7 +387,8 @@ export default function AdminPage() {
     setPrizeForm({
       name: prize.name,
       count: prize.count,
-      description: prize.description || ""
+      description: prize.description || "",
+      image: prize.image || ""
     });
     setIsPrizeDialogOpen(true);
   };
@@ -346,21 +398,19 @@ export default function AdminPage() {
       toast.error("奖项名称不能为空");
       return;
     }
-    if (prizeForm.count < 1) {
+    const count = typeof prizeForm.count === "number" ? prizeForm.count : Number(prizeForm.count);
+    if (!Number.isInteger(count) || count < 1) {
       toast.error("中奖人数至少为1");
       return;
     }
 
+    const prizeData = { ...prizeForm, count };
+
     if (editingPrize) {
-      updatePrize(editingPrize.id, prizeForm);
+      updatePrize(editingPrize.id, prizeData);
       toast.success("奖项更新成功");
     } else {
-      addPrize(prizeForm.name, prizeForm.count);
-      const newPrizes = useLotteryStore.getState().prizes;
-      const newPrize = newPrizes[newPrizes.length - 1];
-      if (newPrize && prizeForm.description) {
-        updatePrize(newPrize.id, { description: prizeForm.description });
-      }
+      addPrize(prizeData);
       toast.success("奖项添加成功");
     }
     setIsPrizeDialogOpen(false);
@@ -397,7 +447,7 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div className="hermes-admin min-h-screen bg-background flex items-center justify-center">
         <Card className="w-[400px]">
           <CardHeader className="text-center">
             <CardTitle>后台管理系统</CardTitle>
@@ -441,7 +491,7 @@ export default function AdminPage() {
   const startDisabled = !isRolling && !canStart;
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="hermes-admin min-h-screen bg-background flex flex-col">
       {/* Header */}
       <header className="border-b px-6 py-3 flex items-center justify-between bg-card">
         <div className="flex items-center gap-2 font-bold text-lg">
@@ -781,18 +831,62 @@ export default function AdminPage() {
                </div>
                <div className="space-y-2">
                  <Label>欢迎页副标题</Label>
-                 <Input value={settingsForm.welcomeSubtitle} onChange={e => setSettingsForm({...settingsForm, welcomeSubtitle: e.target.value})} />
+                 <Input value="BONDING" readOnly disabled />
+               </div>
+               <div className="space-y-2">
+                 <Label>大屏展示字体</Label>
+                 <Select
+                   value={settingsForm.fontFamily}
+                   onValueChange={value => setSettingsForm({...settingsForm, fontFamily: value})}
+                 >
+                   <SelectTrigger className="w-full">
+                     <SelectValue placeholder="选择展示字体" />
+                   </SelectTrigger>
+                   <SelectContent>
+                     <SelectItem value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">系统无衬线（推荐）</SelectItem>
+                     <SelectItem value="'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif">微软雅黑 / 苹方</SelectItem>
+                     <SelectItem value="'Noto Serif SC', 'Songti SC', SimSun, serif">宋体风格</SelectItem>
+                     <SelectItem value="KaiTi, STKaiti, serif">楷体风格</SelectItem>
+                   </SelectContent>
+                 </Select>
+                 <p className="text-xs text-muted-foreground">仅影响大屏端；会优先使用设备中已安装的对应字体。</p>
+               </div>
+               <div className="space-y-2">
+                 <Label>大屏背景图</Label>
+                 <div className="flex items-center gap-4">
+                   {settingsForm.backgroundImage ? (
+                     <div className="relative">
+                       <img src={settingsForm.backgroundImage} alt="大屏背景预览" className="h-24 w-44 rounded border object-cover" />
+                       <button
+                         type="button"
+                         onClick={handleRemoveBackground}
+                         className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center hover:bg-destructive/80"
+                         aria-label="移除背景图"
+                       >
+                         ×
+                       </button>
+                     </div>
+                   ) : (
+                     <label className="flex items-center gap-2 px-4 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                       <Upload className="w-4 h-4" />
+                       <span className="text-sm">上传背景图</span>
+                       <input type="file" accept="image/*" onChange={handleBackgroundUpload} className="hidden" />
+                     </label>
+                   )}
+                 </div>
+                 <p className="text-xs text-muted-foreground">建议使用 16:9 图片，大小不超过 1.5MB；未上传时使用默认背景。</p>
                </div>
                <div className="space-y-2">
                  <Label>公司 Logo（欢迎页显示）</Label>
                  <div className="flex items-center gap-4">
                    {settingsForm.logo ? (
                      <div className="relative">
-                       <img src={settingsForm.logo} alt="Logo" className="h-16 max-w-[200px] object-contain border rounded p-1 bg-white" />
+                       <img src={settingsForm.logo} alt="公司 Logo" className="h-16 max-w-[220px] object-contain border rounded p-1 bg-white" />
                        <button
                          type="button"
                          onClick={handleRemoveLogo}
                          className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center hover:bg-destructive/80"
+                         aria-label="移除 Logo"
                        >
                          ×
                        </button>
@@ -805,7 +899,7 @@ export default function AdminPage() {
                      </label>
                    )}
                  </div>
-                 <p className="text-xs text-muted-foreground">建议使用透明背景 PNG，大小不超过 500KB</p>
+                 <p className="text-xs text-muted-foreground">默认使用 Hermès Logo，也可以上传自定义 Logo（不超过 500KB）</p>
                </div>
                <div className="space-y-2">
                  <Label>奖项页标题</Label>
@@ -991,11 +1085,46 @@ export default function AdminPage() {
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label className="text-right">中奖人数</Label>
-                    <Input type="number" min={1} className="col-span-3" value={prizeForm.count} onChange={e => setPrizeForm({...prizeForm, count: parseInt(e.target.value)||1})} />
+                    <Input
+                      type="number"
+                      min={1}
+                      className="col-span-3"
+                      placeholder="请输入中奖人数"
+                      value={prizeForm.count}
+                      onChange={e => setPrizeForm({
+                        ...prizeForm,
+                        count: e.target.value === '' ? '' : Number(e.target.value),
+                      })}
+                    />
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                     <Label className="text-right">奖品描述</Label>
                     <Textarea className="col-span-3" placeholder="如：iPhone 16 Pro Max 256GB" value={prizeForm.description} onChange={e => setPrizeForm({...prizeForm, description: e.target.value})} />
+                </div>
+                <div className="grid grid-cols-4 items-start gap-4">
+                    <Label className="text-right pt-2">奖品图片</Label>
+                    <div className="col-span-3 space-y-2">
+                      {prizeForm.image ? (
+                        <div className="relative w-fit">
+                          <img src={prizeForm.image} alt="奖品预览" className="h-28 w-44 rounded-lg border object-contain bg-muted p-1" />
+                          <button
+                            type="button"
+                            onClick={() => setPrizeForm({...prizeForm, image: ""})}
+                            className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full text-xs flex items-center justify-center hover:bg-destructive/80"
+                            aria-label="移除奖品图片"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="inline-flex items-center gap-2 px-3 py-2 border border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+                          <Upload className="w-4 h-4" />
+                          <span className="text-sm">上传奖品图片</span>
+                          <input type="file" accept="image/*" onChange={handlePrizeImageUpload} className="hidden" />
+                        </label>
+                      )}
+                      <p className="text-xs text-muted-foreground">会同时展示在奖项页和抽奖大屏，大小不超过 800KB。</p>
+                    </div>
                 </div>
             </div>
             <DialogFooter>

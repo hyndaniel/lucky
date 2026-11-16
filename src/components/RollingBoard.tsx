@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLotteryStore } from "@/store/useStore";
 import { cn } from "@/lib/utils";
-import bgImg from "@/assets/bg.jpg";
+import hermesLogo from "@/assets/hermes-logo.jpg";
 import confetti from "canvas-confetti";
 import { Maximize2, Settings, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -34,6 +34,8 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
   const { currentPrizeId, prizes, settings, viewMode } = useLotteryStore();
   const currentPrize = prizes.find(p => p.id === currentPrizeId);
   const scrollMode = settings.scrollMode || 'none';
+  // 未上传背景图时使用主题的暖白背景；上传后直接使用用户配置的图片。
+  const backgroundImage = settings.backgroundImage || '';
 
   const [currentPage, setCurrentPage] = useState(0);
   const winnersPerPage = settings.winnersPerPage || 24;
@@ -298,11 +300,14 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
   }, []);
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden">
+    <div
+      className="hermes-display-board relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
+      style={{ fontFamily: settings.fontFamily || undefined }}
+    >
       {/* Background with overlay */}
       <div 
-        className="absolute inset-0 bg-cover bg-center z-0" 
-        style={{ backgroundImage: `url(${bgImg})` }}
+        className="hermes-background absolute inset-0 bg-cover bg-center z-0"
+        style={backgroundImage ? { backgroundImage: `url("${backgroundImage}")` } : undefined}
       >
         <div className="absolute inset-0 bg-gradient-to-tr from-black via-zinc-950/98 to-black" />
         
@@ -339,7 +344,7 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
               {/* Golden circular backdrop glow */}
               <div className="absolute w-[500px] h-[500px] bg-gradient-to-tr from-yellow-500/10 to-transparent blur-[120px] rounded-full pointer-events-none -z-10" />
 
-              {settings.logo && (
+              {(settings.logo || hermesLogo) && (
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
@@ -348,7 +353,7 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
                 >
                   <div className="absolute inset-0 bg-yellow-500/15 blur-2xl rounded-full group-hover:bg-yellow-500/25 transition-all duration-700 pointer-events-none" />
                   <img
-                    src={settings.logo}
+                    src={settings.logo || hermesLogo}
                     alt="Logo"
                     className="max-h-36 md:max-h-48 w-auto relative drop-shadow-[0_4px_30px_rgba(255,215,0,0.25)] transition-transform duration-700 group-hover:scale-105"
                   />
@@ -362,7 +367,7 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
                 className="relative"
               >
                 <h2 className="text-yellow-500/90 text-2xl md:text-4xl font-cinzel tracking-[0.4em] uppercase mb-4 drop-shadow-[0_0_15px_rgba(234,179,8,0.25)] font-bold">
-                  {settings.welcomeSubtitle || "Welcome"}
+                  BONDING
                 </h2>
                 
                 {/* Horizontal Divider Line */}
@@ -404,6 +409,13 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/30 to-red-900/40 blur-2xl rounded-3xl group-hover:blur-3xl transition-all" />
                     <div className="relative bg-black/60 backdrop-blur-md border-2 border-yellow-500/40 p-8 rounded-3xl flex flex-col items-center justify-center text-center hover:border-yellow-500/80 transition-all shadow-[0_0_40px_rgba(255,215,0,0.15)] min-h-[280px]">
+                      {prize.image && (
+                        <img
+                          src={prize.image}
+                          alt={prize.name}
+                          className="mb-5 h-28 w-full rounded-2xl object-contain bg-black/20"
+                        />
+                      )}
                       <div className="text-4xl md:text-5xl font-bold text-white font-cinzel mb-3 drop-shadow-lg">{prize.name}</div>
                       <div className="text-yellow-400 text-2xl font-bold mb-4">× {prize.count} 名</div>
                       {prize.description && (
@@ -443,6 +455,13 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
                 <h1 className="text-5xl md:text-7xl font-cinzel font-black text-white drop-shadow-[0_0_30px_rgba(255,215,0,0.4)] tracking-wide">
                   {currentPrize?.name || "Ready"}
                 </h1>
+                {currentPrize?.image && (
+                  <img
+                    src={currentPrize.image}
+                    alt={currentPrize.name}
+                    className="mx-auto mt-4 h-40 w-80 rounded-2xl border border-yellow-500/40 bg-black/30 object-contain p-2 shadow-[0_0_36px_rgba(234,179,8,0.3)] md:h-52 md:w-96"
+                  />
+                )}
                 <div className="mt-3 flex items-center justify-center gap-2 text-white/90">
                   <span className="text-base font-sans tracking-wide">本轮抽取: <span className="text-yellow-400 font-extrabold text-2xl drop-shadow-[0_0_10px_rgba(250,204,21,0.5)] font-mono">{currentPrize?.count}</span> 人</span>
                 </div>

@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useLotteryStore } from "@/store/useStore";
 import RollingBoard from "@/components/RollingBoard";
-import { toast } from "sonner";
 
 export default function DisplayPage() {
   const { 
-    participants, currentPrizeId, prizes, isRolling, roundWinners, settings, setViewMode 
+    participants, winners, currentPrizeId, isRolling, roundWinners, settings, setViewMode
   } = useLotteryStore();
 
   useEffect(() => {
@@ -23,9 +22,15 @@ export default function DisplayPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // 当前奖项信息
-  const currentPrize = prizes.find(p => p.id === currentPrizeId);
-  const candidates = participants.filter(p => currentPrizeId ? !p.bannedPrizes.includes(currentPrizeId) : true); 
+  // 大屏滚动名单与实际抽奖候选池保持一致：已中奖者不会再次出现。
+  const winnerIds = new Set(winners.map(winner => winner.id));
+  const candidates = participants.filter(participant => {
+    if (winnerIds.has(participant.id)) return false;
+    if (!currentPrizeId) return true;
+
+    return !participant.bannedPrizes.includes(currentPrizeId)
+      && (!participant.mustWinPrizeId || participant.mustWinPrizeId === currentPrizeId);
+  });
 
   // 监听 Store 变化 (仅保留状态更新，不再播放音效)
   useEffect(() => {
@@ -38,7 +43,7 @@ export default function DisplayPage() {
   }, [settings.title]);
 
   return (
-    <div className="w-full h-screen overflow-hidden bg-black text-white font-sans">
+    <div className="hermes-display w-full h-screen overflow-hidden bg-white text-[#d95b2b] font-sans">
       <RollingBoard 
         isRolling={isRolling} 
         candidates={candidates} 
