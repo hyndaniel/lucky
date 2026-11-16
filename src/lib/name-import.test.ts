@@ -74,6 +74,17 @@ describe('parseNameList', () => {
       expect(parseNameList(text, false, prizes)).toEqual({ rows: [], error: '未识别到任何姓名' });
     }
   });
+
+  it('引号错误时报错且不导入任何行（避免后续名字被静默吞掉）', () => {
+    expect(parseNameList('张三,"技术部\n李四,市场部\n王五,财务部', false, prizes))
+      .toEqual({ rows: [], error: 'CSV解析错误: Quoted field unterminated' });
+    expect(parseNameList('张三,"技术"部\n李四,市场部', false, prizes))
+      .toEqual({ rows: [], error: 'CSV解析错误: Trailing quote on quoted field is malformed' });
+  });
+
+  it('无法识别分隔符（单列名单）不算错误', () => {
+    expect(parseNameList('张三\n李四', false, prizes)).toEqual({ rows: [plain('张三'), plain('李四')] });
+  });
 });
 
 describe('decodeTextFile', () => {

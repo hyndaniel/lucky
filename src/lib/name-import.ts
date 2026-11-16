@@ -52,7 +52,10 @@ function parseWeight(raw: string): number {
 
 // 解析名单文本：自动识别分隔符（逗号/制表符等）；首行含姓名列名时按表头取列
 export function parseNameList(text: string, includeControlled: boolean, prizes: Prize[]): NameListResult {
-  const { data } = Papa.parse<string[]>(text, { header: false, skipEmptyLines: 'greedy' });
+  const { data, errors } = Papa.parse<string[]>(text, { header: false, skipEmptyLines: 'greedy' });
+  // 引号错误会把后续多行吞进一个单元格，必须报错；分隔符无法识别（单列名单）可忽略
+  const quoteError = errors.find((e) => e.type === 'Quotes');
+  if (quoteError) return { rows: [], error: `CSV解析错误: ${quoteError.message}` };
   const isHeader = data.length > 0 && data[0].some((cell) => NAME_HEADERS.includes(normalize(cell)));
   const columns = isHeader ? findColumns(data[0]) : NO_HEADER_COLUMNS;
   const body = isHeader ? data.slice(1) : data;
