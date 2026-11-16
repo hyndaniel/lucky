@@ -99,6 +99,13 @@ export interface RollStartInput {
   round: CurrentRound;
 }
 
+export const NO_PRIZE_ERROR = '请先选择奖项';
+
+// 模块数须为 1–MAX_MODULE_COUNT 的整数（开始校验与 setRoundConfig 共用）
+export function moduleCountError(n: number): string | null {
+  return Number.isInteger(n) && n >= 1 && n <= MAX_MODULE_COUNT ? null : `模块数需在 1–${MAX_MODULE_COUNT} 之间`;
+}
+
 // 图片池凑不够 moduleCount 时返回原因（开始校验与停止时复查共用）
 export function imagePoolShortage(input: RollStartInput): string | null {
   const n = input.round.moduleCount;
@@ -116,11 +123,12 @@ export function namePoolShortage(prize: Prize, input: RollStartInput): string | 
 // 开始抽奖品前的校验：按顺序返回第一个不满足的原因，全部通过返回 null
 export function validatePrizeRollStart(input: RollStartInput): string | null {
   const { prize, winners, round } = input;
-  if (!prize) return '请先选择奖项';
+  if (!prize) return NO_PRIZE_ERROR;
   const remaining = getRemainingSlots(prize, winners);
   if (remaining === 0) return `「${prize.name}」名额已抽完`;
   const n = round.moduleCount;
-  if (!Number.isInteger(n) || n < 1 || n > MAX_MODULE_COUNT) return `模块数需在 1–${MAX_MODULE_COUNT} 之间`;
+  const countError = moduleCountError(n);
+  if (countError) return countError;
   if (n > remaining) return `本轮模块数（${n}）超过「${prize.name}」剩余名额（${remaining}）`;
   return imagePoolShortage(input) ?? namePoolShortage(prize, input);
 }
@@ -128,6 +136,6 @@ export function validatePrizeRollStart(input: RollStartInput): string | null {
 // 开始抽名字前的校验
 export function validateNameRollStart(input: RollStartInput): string | null {
   if (input.round.phase !== 'prizesRevealed') return '请先抽取本轮奖品';
-  if (!input.prize) return '请先选择奖项';
+  if (!input.prize) return NO_PRIZE_ERROR;
   return namePoolShortage(input.prize, input);
 }

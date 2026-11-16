@@ -10,7 +10,9 @@ import {
   getMustWinCandidates,
   getRemainingSlots,
   imagePoolShortage,
+  moduleCountError,
   namePoolShortage,
+  NO_PRIZE_ERROR,
   resolveImagePool,
   resolveNamePool,
   sampleDistinct,
@@ -315,6 +317,14 @@ describe('停止时的池检查（imagePoolShortage / namePoolShortage）', () =
   it('不足时返回与开始校验相同的文案', () => {
     expect(imagePoolShortage({ ...base(), prizeImages: images(2) })).toBe('可用奖品图片不足：需要 3 张，当前可选 2 张');
     expect(namePoolShortage(prize, { ...base(), participants: people(1) })).toBe('可参与名字不足：需要 3 人，当前可选 1 人');
+  });
+});
+
+describe('moduleCountError / NO_PRIZE_ERROR', () => {
+  it('模块数为 1–60 的整数时返回 null，否则返回与开始校验相同的文案；无奖项文案共用', () => {
+    for (const n of [1, 6, 60]) expect(moduleCountError(n)).toBeNull();
+    for (const n of [0, -1, 61, 1.5, Number.NaN]) expect(moduleCountError(n)).toBe('模块数需在 1–60 之间');
+    expect(NO_PRIZE_ERROR).toBe('请先选择奖项');
   });
 });
 

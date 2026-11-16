@@ -669,7 +669,7 @@ describe('fullReset / restoreDefaultPrizes', () => {
     expect(s().imageSerialCounter).toBe(imageSerialCounter);
   });
 
-  it('restoreDefaultPrizes 同时清空轮次、重新编号内置名单，roundCounter 不变', () => {
+  it('restoreDefaultPrizes 清空轮次、roundCounter 不变；有记录时内置名单从计数器接续编号，不与记录撞号', () => {
     s().selectPrize('p1');
     playRound(2);
     s().restoreDefaultPrizes();
@@ -677,6 +677,18 @@ describe('fullReset / restoreDefaultPrizes', () => {
     expect(s().currentPrizeId).toBe('1');
     expect(s().currentRound).toBeNull();
     expect(s().roundCounter).toBe(1);
+    const n = DEFAULT_PARTICIPANTS.length;
+    expect(s().participants.map((p) => p.serial)).toEqual(bundledSerials.map((serial) => 20 + serial));
+    expect(s().participantSerialCounter).toBe(20 + n);
+    const winnerSerials = new Set(s().winners.map((w) => w.serial));
+    expect(s().participants.filter((p) => winnerSerials.has(p.serial))).toEqual([]);
+    s().addParticipant(newPerson('补录'));
+    expect(s().participants.at(-1)!.serial).toBe(20 + n + 1);
+  });
+
+  it('restoreDefaultPrizes 无记录时内置名单编号 1..N', () => {
+    s().addParticipant(newPerson('补录'));
+    s().restoreDefaultPrizes();
     expect(s().participants.map((p) => p.serial)).toEqual(bundledSerials);
     expect(s().participantSerialCounter).toBe(DEFAULT_PARTICIPANTS.length);
   });

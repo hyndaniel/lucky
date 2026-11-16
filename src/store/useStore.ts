@@ -6,12 +6,12 @@ import type {
   SoundSettings, Winner,
 } from '@/lib/types';
 import {
-  DEFAULT_EFFECTS, DEFAULT_MODULE_COUNT, DEFAULT_MODULE_STYLE, DEFAULT_SOUND, INITIAL_PRIZES, MAX_MODULE_COUNT,
+  DEFAULT_EFFECTS, DEFAULT_MODULE_COUNT, DEFAULT_MODULE_STYLE, DEFAULT_SOUND, INITIAL_PRIZES,
 } from '@/lib/defaults';
 import {
   drawImages, drawNames, getAvailableImages, getDefaultImagePoolIds, getFrozenImageIds, getMustWinCandidates,
-  getRemainingSlots, imagePoolShortage, namePoolShortage, resolveImagePool, resolveNamePool,
-  validateNameRollStart, validatePrizeRollStart, type RollStartInput,
+  getRemainingSlots, imagePoolShortage, moduleCountError, namePoolShortage, NO_PRIZE_ERROR, resolveImagePool,
+  resolveNamePool, validateNameRollStart, validatePrizeRollStart, type RollStartInput,
 } from '@/lib/draw-engine';
 import { parseNameList } from '@/lib/name-import';
 import bondingLogo from '@/assets/bonding-logo.svg';
@@ -42,10 +42,10 @@ const isPreviousDefaultPrizes = (prizes: Prize[]) => (
   })
 );
 
-// 内置名单按顺序补编号 1..N
-const cloneDefaultParticipants = (): Participant[] => DEFAULT_PARTICIPANTS.map((participant, index) => ({
+// 内置名单按顺序编号 start+1..start+N（默认 1..N）
+const cloneDefaultParticipants = (start = 0): Participant[] => DEFAULT_PARTICIPANTS.map((participant, index) => ({
   ...participant,
-  serial: index + 1,
+  serial: start + index + 1,
   bannedPrizes: [...participant.bannedPrizes],
 }));
 const DEFAULT_SETTINGS: Settings = {
@@ -152,7 +152,6 @@ interface LotteryState extends LotteryData {
   clearPrizeImages: () => ActionResult;
 }
 const PHASE_ERROR = '当前阶段不能执行此操作';
-const NO_PRIZE_ERROR = '请先选择奖项';
 const REPLACE_IMPORT_ERROR = '已有抽奖记录，覆盖导入会破坏去重，请先「重置清零」或改用追加导入';
 const CLEAR_IMAGES_ERROR = '已有抽奖记录或本轮正在进行，无法清空图片池，请先「重置清零」';
 const OK: ActionResult = { ok: true };
@@ -392,9 +391,8 @@ export const useLotteryStore = create<LotteryState>()(
         if (!round) return fail(NO_PRIZE_ERROR);
         if ((moduleCount !== undefined || imagePoolIds !== undefined) && round.phase !== 'idle') return fail(PHASE_ERROR);
         if (namePoolIds !== undefined && round.phase !== 'idle' && round.phase !== 'prizesRevealed') return fail(PHASE_ERROR);
-        if (moduleCount !== undefined && !(Number.isInteger(moduleCount) && moduleCount >= 1 && moduleCount <= MAX_MODULE_COUNT)) {
-          return fail(`模块数需在 1–${MAX_MODULE_COUNT} 之间`);
-        }
+        const countError = moduleCount === undefined ? null : moduleCountError(moduleCount);
+        if (countError) return fail(countError);
         // 超过剩余名额允许保存，开始时再校验
         const next = { ...round };
         if (moduleCount !== undefined) next.moduleCount = moduleCount;
@@ -509,12 +507,16 @@ export const useLotteryStore = create<LotteryState>()(
         roundCounter: 0,
       }),
 
-      restoreDefaultPrizes: () => set({
-        participants: cloneDefaultParticipants(),
-        participantSerialCounter: DEFAULT_PARTICIPANTS.length,
-        prizes: INITIAL_PRIZES,
-        currentPrizeId: '1',
-        currentRound: null,
+      restoreDefaultPrizes: () => set((state) => {
+        // 有中奖记录时编号接续计数器，避免与记录快照撞号（R14：只增不减）
+        const start = state.winners.length > 0 ? state.participantSerialCounter : 0;
+        return {
+          participants: cloneDefaultParticipants(start),
+          participantSerialCounter: start + DEFAULT_PARTICIPANTS.length,
+          prizes: INITIAL_PRIZES,
+          currentPrizeId: '1',
+          currentRound: null,
+        };
       }),
       setSettings: (newSettings) => set(state => ({
         settings: { ...state.settings, ...newSettings, welcomeSubtitle: 'BONDING' },
