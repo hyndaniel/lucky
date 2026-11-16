@@ -126,6 +126,17 @@ describe('importParticipants', () => {
     expect(s().participants).toHaveLength(20);
   });
 
+  it('覆盖导入成功后本轮名字池恢复为 null（旧 id 已不存在）；追加导入保留', () => {
+    expect(s().setRoundConfig({ moduleCount: 2, namePoolIds: ['u1', 'u2'] })).toEqual(OK);
+    expect(s().importParticipants('张三', false, 'append').success).toBe(true);
+    expect(s().currentRound!.namePoolIds).toEqual(['u1', 'u2']);
+    expect(s().importParticipants('张三\n李四').success).toBe(true);
+    expect(s().currentRound).toMatchObject({ phase: 'idle', moduleCount: 2, namePoolIds: null });
+    resetStore();
+    expect(s().importParticipants('张三').success).toBe(true);
+    expect(s().currentRound).toBeNull();
+  });
+
   it('duplicateNames = 与（追加时的现有名单 + 本批更早行）重名的行数，重名仍按不同人导入', () => {
     const appended = s().importParticipants('人员1\n张三\n张三\n李四', false, 'append');
     expect(appended).toEqual({ success: true, count: 4, duplicateNames: 2 });
@@ -511,6 +522,71 @@ describe('removePrizeImages / clearPrizeImages', () => {
     expect(s().imageSerialCounter).toBe(0);
     expect(s().currentRound!.imagePoolIds).toBeNull();
     expect(s().addPrizeImages([{ id: 'n1', label: '新' }])[0].serial).toBe(1);
+  });
+});
+
+describe('自动图片池随图片变更重算', () => {
+  // 一等奖分组 2 张 + 未分组 1 张
+  const grouped = () => resetStore({ prizeImages: [image(1, '一等奖'), image(2, '一等奖'), image(3)], imageSerialCounter: 3 });
+  const pool = () => s().currentRound!.imagePoolIds;
+
+  it('无同名分组（null）时上传同名分组图片 → 切到这些图片', () => {
+    expect(s().selectPrize('p1')).toEqual(OK);
+    expect(pool()).toBeNull();
+    s().addPrizeImages([{ id: 'g1', label: 'A', group: '一等奖' }, { id: 'n1', label: 'B' }]);
+    expect(pool()).toEqual(['g1']);
+  });
+
+  it('分组默认池（顺序不同但集合相等也算）再上传同组图片 → 池扩展', () => {
+    grouped();
+    s().selectPrize('p1');
+    expect(pool()).toEqual(['img1', 'img2']);
+    s().addPrizeImages([{ id: 'g3', label: 'C', group: '一等奖' }]);
+    expect(pool()).toEqual(['img1', 'img2', 'g3']);
+    expect(s().setRoundConfig({ imagePoolIds: ['g3', 'img2', 'img1'] })).toEqual(OK);
+    s().addPrizeImages([{ id: 'g4', label: 'D', group: '一等奖' }]);
+    expect(pool()).toEqual(['img1', 'img2', 'g3', 'g4']);
+  });
+
+  it('手动选择（非默认子集）时上传、改分组都不动', () => {
+    grouped();
+    s().selectPrize('p1');
+    s().setRoundConfig({ imagePoolIds: ['img1'] });
+    s().addPrizeImages([{ id: 'g3', label: 'C', group: '一等奖' }]);
+    s().updatePrizeImage('img3', { group: '一等奖' });
+    expect(pool()).toEqual(['img1']);
+
+    resetStore();
+    s().setRoundConfig({ imagePoolIds: ['img1', 'img2'] });
+    s().addPrizeImages([{ id: 'g1', label: 'A', group: '一等奖' }]);
+    expect(pool()).toEqual(['img1', 'img2']);
+  });
+
+  it('删光自动分组池里的图片 → 回落为 null', () => {
+    grouped();
+    s().selectPrize('p1');
+    expect(s().removePrizeImages(['img1']).removed).toEqual(['img1']);
+    expect(pool()).toEqual(['img2']);
+    s().removePrizeImages(['img2']);
+    expect(pool()).toBeNull();
+  });
+
+  it('updatePrizeImage 改分组时自动池随之重算', () => {
+    s().selectPrize('p1');
+    s().updatePrizeImage('img5', { group: '一等奖' });
+    expect(pool()).toEqual(['img5']);
+    s().updatePrizeImage('img5', { group: '' });
+    expect(pool()).toBeNull();
+  });
+
+  it('非 idle 轮次不重算', () => {
+    grouped();
+    s().selectPrize('p1');
+    s().setRoundConfig({ moduleCount: 1 });
+    expect(s().startPrizeRoll()).toEqual(OK);
+    s().addPrizeImages([{ id: 'g3', label: 'C', group: '一等奖' }]);
+    s().updatePrizeImage('img3', { group: '一等奖' });
+    expect(pool()).toEqual(['img1', 'img2']);
   });
 });
 

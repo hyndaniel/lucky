@@ -187,6 +187,22 @@ function ensureRound(state: LotteryData): CurrentRound | null {
   return prize ? createRound(state, prize) : null;
 }
 
+// 本轮图片池仍为「自动」：null，或与（变更前状态的）默认池集合相等
+function isAutoImagePool(state: LotteryData, round: CurrentRound, prize: Prize): boolean {
+  if (round.imagePoolIds === null) return true;
+  const defaults = getDefaultImagePoolIds(getAvailableImages(state.prizeImages, state.winners), prize.name);
+  const picked = new Set(round.imagePoolIds);
+  return defaults !== null && picked.size === defaults.length && defaults.every((id) => picked.has(id));
+}
+
+// 图片池变更后：idle 且仍为自动的本轮图片池按变更后的图片重算；否则返回 null 表示不重算
+function refreshAutoImagePool(before: LotteryData, prizeImages: PrizeImage[]): CurrentRound | null {
+  const round = before.currentRound;
+  const prize = findCurrentPrize(before);
+  if (round?.phase !== 'idle' || !prize || !isAutoImagePool(before, round, prize)) return null;
+  return { ...round, imagePoolIds: getDefaultImagePoolIds(getAvailableImages(prizeImages, before.winners), prize.name) };
+}
+
 const rollInput = (state: LotteryData, round: CurrentRound): RollStartInput => ({
   prize: findCurrentPrize(state),
   winners: state.winners,
@@ -330,7 +346,9 @@ export const useLotteryStore = create<LotteryState>()(
         // 覆盖导入时旧名单已全部移除且无记录引用，编号从 1 重新开始
         const start = mode === 'append' ? state.participantSerialCounter : 0;
         const imported = rows.map((row, index) => ({ ...row, id: nanoid(), serial: start + index + 1 }));
-        set({ participants: [...kept, ...imported], participantSerialCounter: start + imported.length });
+        // 覆盖导入后旧名字 id 已不存在，本轮（此时只可能是 idle）名字池恢复为全部
+        const round = mode === 'replace' && state.currentRound ? { ...state.currentRound, namePoolIds: null } : state.currentRound;
+        set({ participants: [...kept, ...imported], participantSerialCounter: start + imported.length, currentRound: round });
         return { success: true, count: imported.length, duplicateNames };
       },
 
@@ -540,15 +558,21 @@ export const useLotteryStore = create<LotteryState>()(
         const added: PrizeImage[] = items.map((item, index) => ({
           id: item.id, serial: state.imageSerialCounter + index + 1, label: item.label, group: item.group ?? '', createdAt,
         }));
-        set({ prizeImages: [...state.prizeImages, ...added], imageSerialCounter: state.imageSerialCounter + added.length });
+        const prizeImages = [...state.prizeImages, ...added];
+        const currentRound = refreshAutoImagePool(state, prizeImages) ?? state.currentRound;
+        set({ prizeImages, imageSerialCounter: state.imageSerialCounter + added.length, currentRound });
         return added;
       },
 
-      updatePrizeImage: (id, { label, group }) => set((state) => ({
-        prizeImages: state.prizeImages.map((img) => (
+      updatePrizeImage: (id, { label, group }) => set((state) => {
+        const target = state.prizeImages.find((img) => img.id === id);
+        if (!target) return {};
+        const prizeImages = state.prizeImages.map((img) => (
           img.id === id ? { ...img, label: label ?? img.label, group: group ?? img.group } : img
-        )),
-      })),
+        ));
+        const refreshed = group !== undefined && group !== target.group ? refreshAutoImagePool(state, prizeImages) : null;
+        return { prizeImages, currentRound: refreshed ?? state.currentRound };
+      }),
       removePrizeImages: (ids) => {
         const state = get();
         const known = new Set(state.prizeImages.map((img) => img.id));
@@ -565,11 +589,13 @@ export const useLotteryStore = create<LotteryState>()(
         if (removed.length > 0) {
           const gone = new Set(removed);
           const round = state.currentRound;
+          const prizeImages = state.prizeImages.filter((img) => !gone.has(img.id));
           set({
-            prizeImages: state.prizeImages.filter((img) => !gone.has(img.id)),
-            currentRound: round?.imagePoolIds
+            prizeImages,
+            // 自动池重算；手动选择只剔除被删 id
+            currentRound: refreshAutoImagePool(state, prizeImages) ?? (round?.imagePoolIds
               ? { ...round, imagePoolIds: round.imagePoolIds.filter((id) => !gone.has(id)) }
-              : round,
+              : round),
           });
         }
         return { removed, blocked };
