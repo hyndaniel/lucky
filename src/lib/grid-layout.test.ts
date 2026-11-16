@@ -1,0 +1,108 @@
+import { describe, expect, it } from 'vitest';
+import { computeModuleLayout, getGridColumns, type ModuleLayoutInput } from '@/lib/grid-layout';
+
+describe('getGridColumns', () => {
+  it('1..12 使用预设表', () => {
+    const result = Array.from({ length: 12 }, (_, i) => getGridColumns(i + 1));
+    expect(result).toEqual([1, 2, 3, 4, 5, 3, 4, 4, 5, 5, 4, 4]);
+  });
+
+  it('>12 用 ceil(sqrt(n × 1.6))', () => {
+    expect(getGridColumns(13)).toBe(5);
+    expect(getGridColumns(20)).toBe(6);
+    expect(getGridColumns(58)).toBe(10);
+    expect(getGridColumns(60)).toBe(10);
+  });
+
+  it('override > 0 时固定每排数量，但不超过 count', () => {
+    expect(getGridColumns(12, 3)).toBe(3);
+    expect(getGridColumns(2, 5)).toBe(2);
+    expect(getGridColumns(20, 0)).toBe(6);
+  });
+
+  it('count <= 0 时返回 1', () => {
+    expect(getGridColumns(0)).toBe(1);
+    expect(getGridColumns(0, 4)).toBe(1);
+  });
+});
+
+describe('computeModuleLayout', () => {
+  const base: ModuleLayoutInput = {
+    containerWidth: 1920, containerHeight: 800, count: 12, columns: 0, gap: 16, scale: 1,
+    nameFontSize: 40, labelFontSize: 22, showName: true, showLabel: false,
+  };
+
+  it('1920×800、12 个、只显示名字 40px 时的精确结果', () => {
+    expect(computeModuleLayout(base)).toEqual({
+      columns: 4, rows: 3, cellWidth: 468, cellHeight: 256,
+      nameFontSize: 40, labelFontSize: 0, textHeight: 60, padding: 12,
+      moduleSize: 172, cardWidth: 240, cardHeight: 256,
+    });
+  });
+
+  it('scale 0.5 时图片区减半，字号不变', () => {
+    const layout = computeModuleLayout({ ...base, scale: 0.5 });
+    expect(layout.moduleSize).toBe(86);
+    expect(layout.nameFontSize).toBe(40);
+  });
+
+  it('请求字号受格子上限约束', () => {
+    expect(computeModuleLayout({ ...base, nameFontSize: 120 }).nameFontSize).toBe(51);
+  });
+
+  it('58 个（10 列 6 行）在 1920×1000 下名字仍可读', () => {
+    const layout = computeModuleLayout({ ...base, containerHeight: 1000, count: 58 });
+    expect(layout.columns).toBe(10);
+    expect(layout.rows).toBe(6);
+    expect(layout.nameFontSize).toBeGreaterThanOrEqual(18);
+  });
+
+  it('同时显示名字与说明时文字区高度合计', () => {
+    const layout = computeModuleLayout({ ...base, showLabel: true });
+    expect(layout.labelFontSize).toBe(22);
+    expect(layout.textHeight).toBe(93); // 40×1.5 + 22×1.5
+  });
+
+  it('columns 覆盖值生效', () => {
+    const layout = computeModuleLayout({ ...base, columns: 6 });
+    expect(layout.columns).toBe(6);
+    expect(layout.rows).toBe(2);
+  });
+
+  it('任意输入下卡片不超出格子（moduleSize 触发下限 40 的极小容器除外），且结果均为非负整数', () => {
+    const containers = [[1920, 1080], [1280, 720], [3840, 1600], [1024, 600], [800, 400], [320, 240]];
+    const failures: string[] = [];
+    for (const [containerWidth, containerHeight] of containers) {
+      for (let count = 1; count <= 60; count++) {
+        for (const [showName, showLabel] of [[true, false], [true, true], [false, true], [false, false]]) {
+          for (const fontSize of [12, 40, 120]) {
+            for (const gap of [0, 16, 32]) {
+              const input = {
+                containerWidth, containerHeight, count, columns: 0, gap, scale: 1,
+                nameFontSize: fontSize, labelFontSize: fontSize, showName, showLabel,
+              };
+              const layout = computeModuleLayout(input);
+              const tag = JSON.stringify(input);
+              if (!Object.values(layout).every((v) => Number.isInteger(v) && v >= 0)) failures.push(`非负整数 ${tag}`);
+              const { cellWidth, cellHeight, padding, textHeight } = layout;
+              const clamped = Math.min(cellWidth - 2 * padding, cellHeight - 2 * padding - textHeight) < 40;
+              if (clamped) continue;
+              if (layout.cardWidth > cellWidth) failures.push(`cardWidth ${tag}`);
+              if (layout.cardHeight > cellHeight) failures.push(`cardHeight ${tag}`);
+            }
+          }
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  it('count 为 0 或容器尚未测量时不产生 NaN / 负数', () => {
+    for (const input of [{ ...base, count: 0 }, { ...base, containerWidth: 0, containerHeight: 0 }]) {
+      Object.values(computeModuleLayout(input)).forEach((v) => {
+        expect(Number.isFinite(v)).toBe(true);
+        expect(v).toBeGreaterThanOrEqual(0);
+      });
+    }
+  });
+});
