@@ -63,7 +63,10 @@ export async function prepareImageBlob(file: File, maxSide = 1024): Promise<Blob
   if (isPassthrough(file)) return file;
   let bitmap: ImageBitmap | null = null;
   try {
-    bitmap = await createImageBitmap(file);
+    // 显式按 EXIF 方向解码：手机竖拍照片常以横向像素 + Orientation 标记保存，
+    // 依赖引擎默认值可能转出侧躺的图，fitWithin 也会用错宽高。
+    // 不认识该参数的旧引擎会抛错，走下方 catch 返回原文件（<img> 默认会按 EXIF 方向显示）
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
     const { width, height } = fitWithin(bitmap.width, bitmap.height, maxSide);
     const blob = await encodeScaled(bitmap, width, height);
     return blob && blob.size > 0 && blob.size < file.size ? blob : file;

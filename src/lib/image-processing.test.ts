@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   MAX_IMAGE_FILE_BYTES,
   fitWithin,
@@ -65,6 +65,33 @@ describe('prepareImageBlob', () => {
 
   it('无法解码时（node 无 createImageBitmap）返回原文件，不抛错', async () => {
     const file = new File(['not really a png'], 'photo.png', { type: 'image/png' });
+    expect(await prepareImageBlob(file)).toBe(file);
+  });
+});
+
+describe('prepareImageBlob 解码方向', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('按 EXIF 方向解码（imageOrientation: from-image），并关闭 ImageBitmap', async () => {
+    const close = vi.fn();
+    const decode = vi.fn(async () => ({ width: 3000, height: 4000, close }));
+    vi.stubGlobal('createImageBitmap', decode);
+    const file = new File(['jpeg'], 'phone.jpg', { type: 'image/jpeg' });
+    await prepareImageBlob(file);
+    expect(decode).toHaveBeenCalledWith(file, { imageOrientation: 'from-image' });
+    expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('引擎不接受解码参数（同步抛错）时返回原文件', async () => {
+    vi.stubGlobal(
+      'createImageBitmap',
+      vi.fn(() => {
+        throw new TypeError('unsupported imageOrientation');
+      }),
+    );
+    const file = new File(['jpeg'], 'phone.jpg', { type: 'image/jpeg' });
     expect(await prepareImageBlob(file)).toBe(file);
   });
 });
