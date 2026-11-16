@@ -6,8 +6,11 @@ import {
   getAvailableImages,
   getDefaultImagePoolIds,
   getEligibleParticipants,
+  getFrozenImageIds,
   getMustWinCandidates,
   getRemainingSlots,
+  imagePoolShortage,
+  namePoolShortage,
   resolveImagePool,
   resolveNamePool,
   sampleDistinct,
@@ -296,5 +299,34 @@ describe('validateNameRollStart', () => {
 
   it('奖项缺失时提示先选择奖项', () => {
     expect(validateNameRollStart({ ...base(), prize: undefined })).toBe('请先选择奖项');
+  });
+});
+describe('停止时的池检查（imagePoolShortage / namePoolShortage）', () => {
+  const base = () => ({
+    prize, winners: [] as Winner[], prizeImages: images(5), participants: people(5), round: round({ moduleCount: 3 }),
+  });
+
+  it('池足够时返回 null，不检查阶段与名额', () => {
+    const input = { ...base(), round: round({ moduleCount: 3, phase: 'rollingNames' }), winners: [win(person('x'), 'p1')] };
+    expect(imagePoolShortage(input)).toBeNull();
+    expect(namePoolShortage(prize, input)).toBeNull();
+  });
+
+  it('不足时返回与开始校验相同的文案', () => {
+    expect(imagePoolShortage({ ...base(), prizeImages: images(2) })).toBe('可用奖品图片不足：需要 3 张，当前可选 2 张');
+    expect(namePoolShortage(prize, { ...base(), participants: people(1) })).toBe('可参与名字不足：需要 3 人，当前可选 1 人');
+  });
+});
+
+describe('getFrozenImageIds', () => {
+  it('仅 prizesRevealed / rollingNames 时返回本轮已定格的图片', () => {
+    const resultImageIds = ['i1', 'i2'];
+    expect(getFrozenImageIds(null)).toEqual([]);
+    for (const phase of ['idle', 'rollingPrizes', 'completed'] as const) {
+      expect(getFrozenImageIds(round({ phase, resultImageIds }))).toEqual([]);
+    }
+    for (const phase of ['prizesRevealed', 'rollingNames'] as const) {
+      expect(getFrozenImageIds(round({ phase, resultImageIds }))).toEqual(resultImageIds);
+    }
   });
 });

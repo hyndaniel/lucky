@@ -1,5 +1,6 @@
 export interface Participant {
   id: string;
+  serial: number;               // 后台唯一编号（N-0001），不在大屏显示
   name: string;
   dept: string;
   mustWinPrizeId: string | null; // 内定中特定奖项 ID，null 为无内定
@@ -49,6 +50,11 @@ export interface ModuleStyle {
   backgroundColor: string;      // '#rrggbb'
   backgroundOpacity: number;    // 0..100
 }
+// updateModuleStyle 的参数：嵌套的 TextStyle 也按字段浅合并
+export type ModuleStylePatch = Partial<Omit<ModuleStyle, 'nameStyle' | 'labelStyle'>> & {
+  nameStyle?: Partial<TextStyle>;
+  labelStyle?: Partial<TextStyle>;
+};
 export type EffectKind = 'confetti' | 'stars' | 'rockets' | 'emoji';
 export interface EffectSettings { kinds: EffectKind[]; emojis: string; durationSec: number; onPrizeReveal: boolean; }
 export type RollSoundKind = 'none' | 'tick' | 'countdown' | 'custom';
@@ -81,4 +87,7 @@ export interface Settings {
   winnersPerPage?: number;                 // 翻页模式下每屏显示的最多数
   backgroundImage?: string;                // 大屏背景图（base64）
   fontFamily?: string;                     // 大屏展示字体 CSS font-family
+  moduleStyle: ModuleStyle;                // 抽奖模块样式
+  effects: EffectSettings;                 // 中奖特效
+  sound: SoundSettings;                    // 音效
 }

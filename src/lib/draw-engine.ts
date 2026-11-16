@@ -86,6 +86,11 @@ export function sampleDistinct<T>(items: readonly T[], count: number, rng: Rng =
   }
   return result;
 }
+// 本轮已定格（不可删除）的图片：仅奖品已揭晓、名字尚未定格时
+export function getFrozenImageIds(round: CurrentRound | null): string[] {
+  return round && (round.phase === 'prizesRevealed' || round.phase === 'rollingNames') ? round.resultImageIds : [];
+}
+
 export interface RollStartInput {
   prize: Prize | undefined;
   winners: Winner[];
@@ -94,7 +99,15 @@ export interface RollStartInput {
   round: CurrentRound;
 }
 
-function namePoolShortage(prize: Prize, input: RollStartInput): string | null {
+// 图片池凑不够 moduleCount 时返回原因（开始校验与停止时复查共用）
+export function imagePoolShortage(input: RollStartInput): string | null {
+  const n = input.round.moduleCount;
+  const pool = resolveImagePool(input.prizeImages, input.winners, input.round.imagePoolIds);
+  return pool.length < n ? `可用奖品图片不足：需要 ${n} 张，当前可选 ${pool.length} 张` : null;
+}
+
+// 名字池凑不够 moduleCount 时返回原因（开始校验与停止时复查共用）
+export function namePoolShortage(prize: Prize, input: RollStartInput): string | null {
   const n = input.round.moduleCount;
   const pool = resolveNamePool(input.participants, input.winners, prize.id, input.round.namePoolIds);
   return pool.length < n ? `可参与名字不足：需要 ${n} 人，当前可选 ${pool.length} 人` : null;
@@ -109,9 +122,7 @@ export function validatePrizeRollStart(input: RollStartInput): string | null {
   const n = round.moduleCount;
   if (!Number.isInteger(n) || n < 1 || n > MAX_MODULE_COUNT) return `模块数需在 1–${MAX_MODULE_COUNT} 之间`;
   if (n > remaining) return `本轮模块数（${n}）超过「${prize.name}」剩余名额（${remaining}）`;
-  const imagePool = resolveImagePool(input.prizeImages, winners, round.imagePoolIds);
-  if (imagePool.length < n) return `可用奖品图片不足：需要 ${n} 张，当前可选 ${imagePool.length} 张`;
-  return namePoolShortage(prize, input);
+  return imagePoolShortage(input) ?? namePoolShortage(prize, input);
 }
 
 // 开始抽名字前的校验

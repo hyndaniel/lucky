@@ -22,6 +22,16 @@ import { toast } from "sonner";
 import { SAMPLE_CSV } from "@/assets/sample";
 import { cn } from "@/lib/utils";
 import hermesLogo from "@/assets/hermes-logo.jpg";
+import type { RoundPhase } from "@/lib/types";
+
+// 主按钮文案随轮次阶段变化
+const ADVANCE_LABELS: Record<RoundPhase, string> = {
+  idle: "开始抽奖品",
+  rollingPrizes: "停止 · 定格奖品",
+  prizesRevealed: "开始抽名字",
+  rollingNames: "停止 · 定格名字",
+  completed: "下一轮",
+};
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
@@ -30,12 +40,20 @@ export default function AdminPage() {
     return sessionStorage.getItem('admin_authenticated') === 'true';
   });
   const {
-    participants, winners, prizes, settings, currentPrizeId, isRolling, roundWinners, viewMode,
+    participants, winners, prizes, settings, currentPrizeId, currentRound, viewMode,
     importParticipants, fullReset, restoreDefaultPrizes, resetWinners,
     addPrize, updatePrize, removePrize, setSettings, selectPrize, setViewMode,
-    startRolling, stopRolling,
+    advanceRound,
     addParticipant, updateParticipant, removeParticipant
   } = useLotteryStore();
+  const phase = currentRound?.phase ?? 'idle';
+  const isRolling = phase === 'rollingPrizes' || phase === 'rollingNames';
+  const roundWinners = winners.filter(w => w.roundId === currentRound?.id);
+
+  const handleAdvance = () => {
+    const result = advanceRound();
+    if (!result.ok) toast.error(result.reason);
+  };
 
   const [csvText, setCsvText] = useState("");
 
@@ -418,8 +436,9 @@ export default function AdminPage() {
 
   const handleDeletePrize = (id: string) => {
     if (confirm("确定要删除此奖项吗？")) {
-      removePrize(id);
-      toast.success("奖项已删除");
+      const result = removePrize(id);
+      if (result.ok) toast.success("奖项已删除");
+      else toast.error(result.reason);
     }
   };
 
@@ -438,12 +457,13 @@ export default function AdminPage() {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
       if (e.code === 'Space') {
         e.preventDefault();
-        isRolling ? stopRolling() : startRolling();
+        const result = advanceRound();
+        if (!result.ok) toast.error(result.reason);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthenticated, isRolling]);
+  }, [isAuthenticated, advanceRound]);
 
   if (!isAuthenticated) {
     return (
@@ -479,16 +499,9 @@ export default function AdminPage() {
   }
 
   const currentPrize = prizes.find(p => p.id === currentPrizeId);
-  const filteredParticipants = participants.filter(p => 
+  const filteredParticipants = participants.filter(p =>
     p.name.includes(searchTerm) || p.dept.includes(searchTerm)
   );
-  const winnerIds = new Set(winners.map(w => w.id));
-  const validPool = participants.filter(p => !winnerIds.has(p.id) && (currentPrizeId ? !(p.bannedPrizes || []).includes(currentPrizeId) : true));
-  const finalPool = currentPrizeId
-    ? validPool.filter(p => !p.mustWinPrizeId || p.mustWinPrizeId === currentPrizeId)
-    : [];
-  const canStart = Boolean(currentPrize) && finalPool.length > 0;
-  const startDisabled = !isRolling && !canStart;
 
   return (
     <div className="hermes-admin min-h-screen bg-background flex flex-col">
@@ -609,16 +622,15 @@ export default function AdminPage() {
                   <div className="text-2xl font-bold">{currentPrize?.name || "未选择"}</div>
                 </div>
                 <div className="h-10 w-px bg-border mx-4"></div>
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   className={cn("h-20 text-2xl px-12 transition-all", isRolling ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700")}
-                  onClick={() => isRolling ? stopRolling() : startRolling()}
-                  disabled={startDisabled}
+                  onClick={handleAdvance}
                 >
                   {isRolling ? (
-                    <><Square className="w-6 h-6 mr-3 fill-current"/> 停止 (STOP)</>
+                    <><Square className="w-6 h-6 mr-3 fill-current"/> {ADVANCE_LABELS[phase]}</>
                   ) : (
-                    <><Play className="w-6 h-6 mr-3 fill-current"/> 开始 (START)</>
+                    <><Play className="w-6 h-6 mr-3 fill-current"/> {ADVANCE_LABELS[phase]}</>
                   )}
                 </Button>
                 <div className="h-10 w-px bg-border mx-4"></div>

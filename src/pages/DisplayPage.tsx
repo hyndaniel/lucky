@@ -3,9 +3,13 @@ import { useLotteryStore } from "@/store/useStore";
 import RollingBoard from "@/components/RollingBoard";
 
 export default function DisplayPage() {
-  const { 
-    participants, winners, currentPrizeId, isRolling, roundWinners, settings, setViewMode
+  const {
+    participants, winners, currentPrizeId, currentRound, settings, setViewMode
   } = useLotteryStore();
+  // 旧抽奖页过渡适配：从轮次推导滚动状态与本轮中奖者（只读，不写 store）
+  const phase = currentRound?.phase ?? 'idle';
+  const isRolling = phase === 'rollingPrizes' || phase === 'rollingNames';
+  const roundWinners = winners.filter(winner => winner.roundId === currentRound?.id);
 
   useEffect(() => {
     setViewMode('welcome');
@@ -35,7 +39,7 @@ export default function DisplayPage() {
   // 监听 Store 变化 (仅保留状态更新，不再播放音效)
   useEffect(() => {
     prevRollingRef.current = isRolling;
-  }, [isRolling, roundWinners]);
+  }, [isRolling]);
 
   // 全局标题同步
   useEffect(() => {
