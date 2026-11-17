@@ -50,10 +50,11 @@ export default function AdminPage() {
   const isRolling = phase === 'rollingPrizes' || phase === 'rollingNames';
 
   const [csvText, setCsvText] = useState("");
-  const [importMode, setImportMode] = useState<"replace" | "append">("append");
+  const [importMode, setImportMode] = useState<"replace" | "append">("replace");
   const [confirmFullReset, setConfirmFullReset] = useState(false);
-  // 有抽奖记录时覆盖导入不可用，强制追加
-  const effectiveImportMode = winners.length > 0 ? "append" : importMode;
+  // 有抽奖记录或本轮进行中时覆盖导入不可用（与 store 规则一致），强制追加
+  const replaceLocked = winners.length > 0 || (currentRound !== null && currentRound.phase !== "idle");
+  const effectiveImportMode = replaceLocked ? "append" : importMode;
 
   // 参与者 id → 已中奖奖项名
   const wonPrizeById = useMemo(() => {
@@ -562,16 +563,16 @@ export default function AdminPage() {
                       className="flex gap-6"
                     >
                       <div className="flex items-center gap-2">
-                        <RadioGroupItem value="replace" id="import-mode-replace" disabled={winners.length > 0} />
-                        <Label htmlFor="import-mode-replace" className={winners.length > 0 ? "text-muted-foreground" : ""}>覆盖现有名单</Label>
+                        <RadioGroupItem value="replace" id="import-mode-replace" disabled={replaceLocked} />
+                        <Label htmlFor="import-mode-replace" className={replaceLocked ? "text-muted-foreground" : ""}>覆盖现有名单</Label>
                       </div>
                       <div className="flex items-center gap-2">
                         <RadioGroupItem value="append" id="import-mode-append" />
                         <Label htmlFor="import-mode-append">追加到现有名单</Label>
                       </div>
                     </RadioGroup>
-                    {winners.length > 0 && (
-                      <p className="text-xs text-muted-foreground">已有抽奖记录，只能追加导入；如需覆盖请先在“中奖记录”中重置清零。</p>
+                    {replaceLocked && (
+                      <p className="text-xs text-muted-foreground">已有抽奖记录或本轮正在进行，只能追加导入；如需覆盖请先在“中奖记录”中重置清零。</p>
                     )}
                     <div className="flex gap-2">
                       <Button onClick={handleImport}><Upload className="w-4 h-4 mr-2"/> 执行导入</Button>
