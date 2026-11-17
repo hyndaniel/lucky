@@ -32,7 +32,7 @@ import { ImagePoolTab } from "@/components/admin/ImagePoolTab";
 import { LiveControlPanel } from "@/components/admin/LiveControlPanel";
 import { DisplayStyleTab } from "@/components/admin/DisplayStyleTab";
 import { WinnersTab } from "@/components/admin/WinnersTab";
-import { FONT_PRESETS } from "@/lib/defaults";
+import { fontOptions } from "@/lib/layout-editor";
 import { formatSerial } from "@/lib/serial";
 import { decodeTextFile } from "@/lib/name-import";
 
@@ -644,7 +644,7 @@ export default function AdminPage() {
                      <SelectValue placeholder="选择展示字体" />
                    </SelectTrigger>
                    <SelectContent>
-                     {FONT_PRESETS.map(font => (
+                     {fontOptions(settings.fonts, settingsForm.fontFamily).filter(font => font.group !== 'follow').map(font => (
                        <SelectItem key={font.value} value={font.value}>{font.label}</SelectItem>
                      ))}
                    </SelectContent>

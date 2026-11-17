@@ -191,6 +191,14 @@ export default function DrawStage() {
   const textWidth = Math.max(0, layout.cardWidth - 2 * layout.padding);
   const nameFamily = style.nameStyle.fontFamily || settings.fontFamily || '';
   const labelFamily = style.labelStyle.fontFamily || settings.fontFamily || '';
+  // 字体晚加载完成（上传字体读 IndexedDB 是异步的）后重新测算，否则字号停在回退字体的测量结果
+  const [fontsVersion, setFontsVersion] = useState(0);
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    const bump = () => setFontsVersion((v) => v + 1);
+    document.fonts.addEventListener('loadingdone', bump);
+    return () => document.fonts.removeEventListener('loadingdone', bump);
+  }, []);
   const poolNames = useMemo(() => namePool.map((p) => p.name), [namePool]);
   const poolDepts = useMemo(() => namePool.map((p) => p.dept), [namePool]);
   const poolLabels = useMemo(
@@ -206,19 +214,20 @@ export default function DrawStage() {
   const nameFontSize = useMemo(
     // 本轮中奖者必来自 namePool（池只排除「本轮之前」的中奖记录），所以只测候选池即可覆盖所有会出现的名字
     () => fitShared(poolNames, layout.nameFontSize, nameFamily, 700),
+    // fontsVersion 只用来在字体加载完成时触发重新测算
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [poolNames, layout.nameFontSize, nameFamily, textWidth],
+    [poolNames, layout.nameFontSize, nameFamily, textWidth, fontsVersion],
   );
   const labelFontSize = useMemo(
     () => fitShared(poolLabels, layout.labelFontSize, labelFamily, 500),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [poolLabels, layout.labelFontSize, labelFamily, textWidth],
+    [poolLabels, layout.labelFontSize, labelFamily, textWidth, fontsVersion],
   );
   // 部门字号以统一后的名字字号为基准（约 0.7×），再按候选池里的部门文字统一缩小
   const deptFontSize = useMemo(
     () => (showDept ? fitShared(poolDepts, Math.floor(nameFontSize * DEPT_RATIO), labelFamily, 500) : 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [showDept, poolDepts, nameFontSize, labelFamily, textWidth],
+    [showDept, poolDepts, nameFontSize, labelFamily, textWidth, fontsVersion],
   );
 
   const views = Array.from({ length: moduleCount }, (_, i) => viewFor(i));
