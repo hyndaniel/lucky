@@ -23,6 +23,7 @@ import { SAMPLE_CSV } from "@/assets/sample";
 import { cn } from "@/lib/utils";
 import hermesLogo from "@/assets/hermes-logo.jpg";
 import type { RoundPhase } from "@/lib/types";
+import { ImagePoolTab } from "@/components/admin/ImagePoolTab";
 
 // 主按钮文案随轮次阶段变化
 const ADVANCE_LABELS: Record<RoundPhase, string> = {
@@ -677,6 +678,7 @@ export default function AdminPage() {
           <TabsList>
             <TabsTrigger value="participants">人员名单管理</TabsTrigger>
             <TabsTrigger value="import">批量导入</TabsTrigger>
+            <TabsTrigger value="images">图片池</TabsTrigger>
             <TabsTrigger value="winners">中奖记录</TabsTrigger>
             <TabsTrigger value="settings">系统设置</TabsTrigger>
           </TabsList>
@@ -805,6 +807,11 @@ export default function AdminPage() {
                     </Button>
                  </div>
                </div>
+            </TabsContent>
+
+            {/* Tab: 图片池 */}
+            <TabsContent value="images" className="mt-0 p-4 overflow-auto">
+              <ImagePoolTab />
             </TabsContent>
 
             {/* Tab: 中奖记录 */}
