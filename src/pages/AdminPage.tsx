@@ -14,25 +14,16 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Download, Upload, Trash, Play, Square,
+  Download, Upload, Trash,
   ShieldAlert, MonitorPlay, LogOut,
   Plus, Pencil, Search
 } from "lucide-react";
 import { toast } from "sonner";
 import { SAMPLE_CSV } from "@/assets/sample";
-import { cn } from "@/lib/utils";
 import hermesLogo from "@/assets/hermes-logo.jpg";
-import type { RoundPhase } from "@/lib/types";
+import { PHASE_LABELS } from "@/lib/phase-labels";
 import { ImagePoolTab } from "@/components/admin/ImagePoolTab";
-
-// 主按钮文案随轮次阶段变化
-const ADVANCE_LABELS: Record<RoundPhase, string> = {
-  idle: "开始抽奖品",
-  rollingPrizes: "停止 · 定格奖品",
-  prizesRevealed: "开始抽名字",
-  rollingNames: "停止 · 定格名字",
-  completed: "下一轮",
-};
+import { LiveControlPanel } from "@/components/admin/LiveControlPanel";
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
@@ -41,20 +32,13 @@ export default function AdminPage() {
     return sessionStorage.getItem('admin_authenticated') === 'true';
   });
   const {
-    participants, winners, prizes, settings, currentPrizeId, currentRound, viewMode,
+    participants, winners, prizes, settings, currentRound,
     importParticipants, fullReset, restoreDefaultPrizes, resetWinners,
-    addPrize, updatePrize, removePrize, setSettings, selectPrize, setViewMode,
-    advanceRound,
+    addPrize, updatePrize, removePrize, setSettings,
     addParticipant, updateParticipant, removeParticipant
   } = useLotteryStore();
   const phase = currentRound?.phase ?? 'idle';
   const isRolling = phase === 'rollingPrizes' || phase === 'rollingNames';
-  const roundWinners = winners.filter(w => w.roundId === currentRound?.id);
-
-  const handleAdvance = () => {
-    const result = advanceRound();
-    if (!result.ok) toast.error(result.reason);
-  };
 
   const [csvText, setCsvText] = useState("");
 
@@ -451,21 +435,6 @@ export default function AdminPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // 快捷键支持
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
-      if (e.code === 'Space') {
-        e.preventDefault();
-        const result = advanceRound();
-        if (!result.ok) toast.error(result.reason);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAuthenticated, advanceRound]);
-
   if (!isAuthenticated) {
     return (
       <div className="hermes-admin min-h-screen bg-background flex items-center justify-center">
@@ -499,7 +468,6 @@ export default function AdminPage() {
     );
   }
 
-  const currentPrize = prizes.find(p => p.id === currentPrizeId);
   const filteredParticipants = participants.filter(p =>
     p.name.includes(searchTerm) || p.dept.includes(searchTerm)
   );
@@ -526,7 +494,7 @@ export default function AdminPage() {
              GitHub
            </a>
            <Badge variant={isRolling ? "destructive" : "secondary"}>
-             {isRolling ? "抽奖进行中..." : "等待指令"}
+             {PHASE_LABELS[phase]}
            </Badge>
            <Button variant="ghost" size="sm" onClick={handleLogout} title="退出登录">
              <LogOut className="w-4 h-4"/>
@@ -537,141 +505,12 @@ export default function AdminPage() {
       <main className="flex-1 p-6 overflow-hidden flex flex-col gap-6">
         
         {/* 核心控制区 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 左侧：奖项选择与控制 */}
-          <Card className="lg:col-span-2 border-primary/20 shadow-md">
-            <CardHeader>
-              <CardTitle>现场控制 (Live Control)</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-
-              {/* 场景切换 */}
-              <div className="space-y-2">
-                <Label>大屏场景</Label>
-                <div className="flex gap-3 p-2 bg-muted/30 rounded-xl w-fit border-2 border-dashed border-muted-foreground/20">
-                   <Button
-                     variant={viewMode === 'welcome' ? 'default' : 'outline'}
-                     onClick={() => setViewMode('welcome')}
-                     disabled={isRolling}
-                     className={cn(
-                       "w-24 h-24 flex flex-col gap-2 text-base",
-                       viewMode === 'welcome' && "ring-2 ring-primary ring-offset-2"
-                     )}
-                   >
-                     <span className="text-3xl">🎉</span>
-                     <span>欢迎页</span>
-                   </Button>
-                   <Button
-                     variant={viewMode === 'prize' ? 'default' : 'outline'}
-                     onClick={() => setViewMode('prize')}
-                     disabled={isRolling}
-                     className={cn(
-                       "w-24 h-24 flex flex-col gap-2 text-base",
-                       viewMode === 'prize' && "ring-2 ring-primary ring-offset-2"
-                     )}
-                   >
-                     <span className="text-3xl">🎁</span>
-                     <span>奖项页</span>
-                   </Button>
-                   <Button
-                     variant={viewMode === 'lottery' ? 'default' : 'outline'}
-                     onClick={() => setViewMode('lottery')}
-                     disabled={isRolling}
-                     className={cn(
-                       "w-24 h-24 flex flex-col gap-2 text-base",
-                       viewMode === 'lottery' && "ring-2 ring-primary ring-offset-2"
-                     )}
-                   >
-                     <span className="text-3xl">🎰</span>
-                     <span>抽奖页</span>
-                   </Button>
-                </div>
-              </div>
-              
-              {/* 奖项切换 */}
-              <div className="space-y-2">
-                <Label>当前抽取的奖项 <span className="text-xs text-muted-foreground">(点击选择，双击编辑)</span></Label>
-                <div className="flex flex-wrap gap-2">
-                  {prizes.map(p => (
-                    <Button
-                      key={p.id}
-                      variant={currentPrizeId === p.id ? "default" : "outline"}
-                      onClick={() => selectPrize(p.id)}
-                      onDoubleClick={() => !isRolling && openEditPrizeDialog(p)}
-                      className="min-w-[100px] relative group"
-                      disabled={isRolling}
-                    >
-                      {p.name} ({p.count}人)
-                      {!isRolling && (
-                        <span
-                          className="absolute -top-1 -right-1 hidden group-hover:flex w-4 h-4 bg-destructive text-destructive-foreground rounded-full items-center justify-center text-xs cursor-pointer"
-                          onClick={(e) => { e.stopPropagation(); handleDeletePrize(p.id); }}
-                        >
-                          ×
-                        </span>
-                      )}
-                    </Button>
-                  ))}
-                  <Button variant="ghost" size="icon" onClick={openAddPrizeDialog} title="添加奖项" disabled={isRolling}><Plus className="w-4 h-4"/></Button>
-                </div>
-              </div>
-
-              {/* 大按钮控制 */}
-              <div className="flex items-center gap-4 py-4 bg-muted/30 rounded-lg justify-center border border-dashed">
-                <div className="text-center space-y-2">
-                  <div className="text-sm text-muted-foreground">当前奖项</div>
-                  <div className="text-2xl font-bold">{currentPrize?.name || "未选择"}</div>
-                </div>
-                <div className="h-10 w-px bg-border mx-4"></div>
-                <Button
-                  size="lg"
-                  className={cn("h-20 text-2xl px-12 transition-all", isRolling ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700")}
-                  onClick={handleAdvance}
-                >
-                  {isRolling ? (
-                    <><Square className="w-6 h-6 mr-3 fill-current"/> {ADVANCE_LABELS[phase]}</>
-                  ) : (
-                    <><Play className="w-6 h-6 mr-3 fill-current"/> {ADVANCE_LABELS[phase]}</>
-                  )}
-                </Button>
-                <div className="h-10 w-px bg-border mx-4"></div>
-                <div className="text-center space-y-2">
-                   <div className="text-sm text-muted-foreground">本轮结果</div>
-                   <div className="text-xl font-mono">{roundWinners.length > 0 ? `${roundWinners.length} 人` : "-"}</div>
-                </div>
-              </div>
-
-            </CardContent>
-          </Card>
-
-          {/* 右侧：本轮结果预览 */}
-          <Card className="h-full flex flex-col">
-            <CardHeader><CardTitle>本轮结果预览</CardTitle></CardHeader>
-            <CardContent className="flex-1 overflow-y-auto">
-               {roundWinners.length === 0 ? (
-                 <div className="text-center text-muted-foreground py-8">等待开奖...</div>
-               ) : (
-                 <Table>
-                   <TableBody>
-                     {roundWinners.map(w => (
-                       <TableRow key={w.id}>
-                         <TableCell className="font-bold">{w.name}</TableCell>
-                         <TableCell className="text-xs text-muted-foreground">{w.dept}</TableCell>
-                         {controlledModeUnlocked && (
-                           <TableCell className="text-xs">
-                              {w.mustWinPrizeId && (
-                                  <Badge variant="secondary" className="scale-75">内定</Badge>
-                              )}
-                           </TableCell>
-                         )}
-                       </TableRow>
-                     ))}
-                   </TableBody>
-                 </Table>
-               )}
-            </CardContent>
-          </Card>
-        </div>
+        <LiveControlPanel
+          controlledMode={controlledModeUnlocked}
+          onEditPrize={openEditPrizeDialog}
+          onDeletePrize={handleDeletePrize}
+          onAddPrize={openAddPrizeDialog}
+        />
 
         {/* 数据管理区 */}
         <Tabs defaultValue="participants" className="flex-1 flex flex-col overflow-hidden">
