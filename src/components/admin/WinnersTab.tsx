@@ -110,7 +110,7 @@ function exportWinnersImage(winners: Winner[], prizes: Prize[], title: string) {
 
     ctx.fillStyle = '#ffffff';
     ctx.fillText(String(i + 1), colXs.idx, y + 30);
-    ctx.fillText(fitText(ctx, w.name, colXs.dept - colXs.name - 12), colXs.name, y + 30);
+    ctx.fillText(fitText(ctx, w.name || '-', colXs.dept - colXs.name - 12), colXs.name, y + 30);
     ctx.fillStyle = 'rgba(255,255,255,0.8)';
     ctx.fillText(fitText(ctx, w.dept || '-', colXs.prize - colXs.dept - 12), colXs.dept, y + 30);
     ctx.fillStyle = '#f5d76e';

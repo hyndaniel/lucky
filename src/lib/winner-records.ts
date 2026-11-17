@@ -11,3 +11,8 @@ export function sortWinnersForDisplay(winners: readonly Winner[]): Winner[] {
   }
   return [...groups.values()].reverse().flat();
 }
+
+// 有参与者的中奖记录数：image-only 记录没有人（id 为空），不计入「已中奖」人数
+export function countWinnerPeople(winners: readonly Winner[]): number {
+  return winners.filter((w) => w.id !== '').length;
+}

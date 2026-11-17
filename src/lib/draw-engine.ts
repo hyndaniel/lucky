@@ -36,7 +36,7 @@ export function resolveImagePool(images: PrizeImage[], winners: Winner[], imageP
 
 // 合格名字：未中过奖、未被禁中本奖项、未内定其他奖项
 export function getEligibleParticipants(participants: Participant[], winners: Winner[], prizeId: string): Participant[] {
-  const wonIds = new Set(winners.map((w) => w.id));
+  const wonIds = new Set(winners.map((w) => w.id).filter(Boolean)); // image-only 记录 id 为空，不能排除 id 为空的名单项
   return participants.filter((p) =>
     !wonIds.has(p.id)
     && !p.bannedPrizes.includes(prizeId)

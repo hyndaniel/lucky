@@ -303,6 +303,13 @@ describe('validateNameRollStart', () => {
     expect(validateNameRollStart({ ...base(), prize: undefined })).toBe('请先选择奖项');
   });
 });
+describe('getEligibleParticipants 与 image-only 记录', () => {
+  it('id 为空的中奖记录不会排除 id 为空的名单项', () => {
+    const blank = { ...win(person(''), 'p1', 'i1'), id: '', name: '' };
+    expect(ids(getEligibleParticipants([person(''), person('u1')], [blank], 'p1'))).toEqual(['', 'u1']);
+  });
+});
+
 describe('按抽奖模式的开始校验', () => {
   const mode = (drawMode: CurrentRound['drawMode'], extra: Partial<CurrentRound> = {}) => round({ moduleCount: 3, drawMode, ...extra });
   const base = (drawMode: CurrentRound['drawMode']) => ({

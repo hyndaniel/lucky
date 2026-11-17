@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { SAMPLE_CSV } from "@/assets/sample";
 import hermesLogo from "@/assets/hermes-logo.jpg";
 import { PHASE_LABELS } from "@/lib/phase-labels";
+import { countWinnerPeople } from "@/lib/winner-records";
 import { ImagePoolTab } from "@/components/admin/ImagePoolTab";
 import { LiveControlPanel } from "@/components/admin/LiveControlPanel";
 import { DisplayStyleTab } from "@/components/admin/DisplayStyleTab";
@@ -56,6 +57,9 @@ export default function AdminPage() {
   // 有抽奖记录或本轮进行中时覆盖导入不可用（与 store 规则一致），强制追加
   const replaceLocked = winners.length > 0 || (currentRound !== null && currentRound.phase !== "idle");
   const effectiveImportMode = replaceLocked ? "append" : importMode;
+
+  // 统计只算有人的记录：image-only 的记录没有参与者（id 为空）
+  const wonPeopleCount = countWinnerPeople(winners);
 
   // 参与者 id → 已中奖奖项名
   const wonPrizeById = useMemo(() => {
@@ -587,8 +591,8 @@ export default function AdminPage() {
                     <div className="p-4 bg-muted rounded text-sm space-y-2">
                         <div className="font-bold mb-2">数据统计</div>
                         <div>总人数: {participants.length}</div>
-                        <div>已中奖: {winners.length}</div>
-                        <div>剩余: {participants.length - winners.length}</div>
+                        <div>已中奖: {wonPeopleCount}</div>
+                        <div>剩余: {participants.length - wonPeopleCount}</div>
                     </div>
                     <Button variant="destructive" className="w-full" onClick={() => setConfirmFullReset(true)}>
                       <Trash className="w-4 h-4 mr-2"/> 清空数据库

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Winner } from '@/lib/types';
-import { sortWinnersForDisplay } from '@/lib/winner-records';
+import { countWinnerPeople, sortWinnersForDisplay } from '@/lib/winner-records';
 
 const win = (id: string, roundId: string, extra: Partial<Winner> = {}): Winner => ({
   id, serial: 1, name: id, dept: '', mustWinPrizeId: null, bannedPrizes: [], weight: 1,
@@ -32,5 +32,17 @@ describe('sortWinnersForDisplay', () => {
 
   it('空数组返回空数组', () => {
     expect(sortWinnersForDisplay([])).toEqual([]);
+  });
+});
+
+describe('countWinnerPeople', () => {
+  it('不计 image-only 记录（id 为空）：已中奖 / 剩余 不受其影响', () => {
+    const people = [win('u1', 'r1'), win('u2', 'r1')];
+    const imageOnly = [win('', 'r2', { name: '', imageId: 'img1' }), win('', 'r2', { name: '', imageId: 'img2' })];
+    expect(countWinnerPeople(people)).toBe(2);
+    expect(countWinnerPeople([...people, ...imageOnly])).toBe(2);
+    expect(countWinnerPeople(imageOnly)).toBe(0);
+    // 剩余 = 总人数 - 有人的记录，不会变负
+    expect(1 - countWinnerPeople(imageOnly)).toBe(1);
   });
 });

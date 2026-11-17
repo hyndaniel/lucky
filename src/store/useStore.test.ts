@@ -7,6 +7,7 @@ import {
 import { resolveImagePool, resolveNamePool } from '@/lib/draw-engine';
 import { DEFAULT_PARTICIPANTS } from '@/assets/default-participants';
 import hermesLogo from '@/assets/hermes-logo.jpg';
+import { countWinnerPeople } from '@/lib/winner-records';
 import { normalizeSettings, useLotteryStore, writeStorageSafely } from '@/store/useStore';
 import { toast } from 'sonner';
 
@@ -1217,6 +1218,14 @@ describe('抽奖模式：image-only', () => {
     expect(s().currentRound).toMatchObject({ phase: 'idle', drawMode: 'image-only', resultImageIds: [], resultNameIds: [] });
     expect(s().winners).toEqual([]);
     expect(s().roundCounter).toBe(0);
+  });
+
+  it('有人的记录数不变：image-only 轮次后已中奖 0、剩余仍为全部名单', () => {
+    s().advanceRound();
+    s().advanceRound();
+    expect(s().winners).toHaveLength(3);
+    expect(countWinnerPeople(s().winners)).toBe(0);
+    expect(s().participants.length - countWinnerPeople(s().winners)).toBe(20);
   });
 
   it('记录的 roundId 唯一数 = roundCounter（迁移按此重建计数）', () => {
