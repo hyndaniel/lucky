@@ -1039,15 +1039,21 @@ describe('持久化写入失败（配额）', () => {
 describe('页面排版 / 字体 / 每轮抽奖模式', () => {
   it('updatePageLayout 只合并目标页面的目标嵌套字段', () => {
     const before = s().settings;
+    expect(before.prizeLayout.title.fontSize).not.toBe(72);
+    const prizeTitle = structuredClone(before.prizeLayout.title);
+    const prizeSubtitle = structuredClone(before.prizeLayout.subtitle);
+    const welcome = structuredClone(before.welcomeLayout);
+    const lottery = structuredClone(before.lotteryLayout);
     s().updatePageLayout('prize', { title: { fontSize: 72 } });
     const after = s().settings;
+    expect(after.prizeLayout).not.toBe(before.prizeLayout);
     expect(after.prizeLayout.title.fontSize).toBe(72);
-    expect(after.prizeLayout.title.color).toBe(before.prizeLayout.title.color);
-    expect(after.prizeLayout.title.align).toBe(before.prizeLayout.title.align);
-    expect(after.prizeLayout.title.fontFamily).toBe(before.prizeLayout.title.fontFamily);
-    expect(after.prizeLayout.subtitle).toEqual(before.prizeLayout.subtitle);
-    expect(after.welcomeLayout).toEqual(before.welcomeLayout);
-    expect(after.lotteryLayout).toEqual(before.lotteryLayout);
+    expect(after.prizeLayout.title.color).toBe(prizeTitle.color);
+    expect(after.prizeLayout.title.align).toBe(prizeTitle.align);
+    expect(after.prizeLayout.title.fontFamily).toBe(prizeTitle.fontFamily);
+    expect(after.prizeLayout.subtitle).toEqual(prizeSubtitle);
+    expect(after.welcomeLayout).toEqual(welcome);
+    expect(after.lotteryLayout).toEqual(lottery);
   });
 
   it('updatePageLayout 的 decor / verticalAlign / subtitle 补丁按字段合并', () => {
@@ -1086,6 +1092,17 @@ describe('页面排版 / 字体 / 每轮抽奖模式', () => {
     expect(s().setRoundConfig({ drawMode: 'name-only' })).toEqual(fail(PHASE_ERROR));
     expect(s().currentRound).toBe(rolling);
     expect(s().currentRound?.drawMode).toBe('image-only');
+  });
+
+  it('prizesRevealed 阶段 setRoundConfig({ drawMode }) 同样失败', () => {
+    s().selectPrize('p1');
+    expect(s().startPrizeRoll()).toEqual(OK);
+    expect(s().stopPrizeRoll()).toEqual(OK);
+    expect(s().currentRound?.phase).toBe('prizesRevealed');
+    const revealed = s().currentRound;
+    expect(s().setRoundConfig({ drawMode: 'name-only' })).toEqual(fail(PHASE_ERROR));
+    expect(s().currentRound).toBe(revealed);
+    expect(s().currentRound?.drawMode).toBe('image-then-name');
   });
 
   it('updateModuleStyle 保留 shape / labelPosition', () => {
