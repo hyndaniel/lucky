@@ -20,7 +20,7 @@ import { deleteMedia, putMedia } from '@/lib/media-store';
 import { labelFromFileName, MAX_IMAGE_FILE_BYTES, prepareImageBlob } from '@/lib/image-processing';
 import { getFrozenImageIds } from '@/lib/draw-engine';
 import {
-  UNGROUPED, collectGroups, countByStatus, deriveImageStatuses, filterImages,
+  UNGROUPED, collectGroups, countByStatus, deriveImageStatuses, filterImages, groupUpdates,
   type ImageStatus,
 } from '@/lib/image-pool-filter';
 
@@ -141,7 +141,9 @@ export function ImagePoolTab() {
     const next: { label?: string; group?: string } = {};
     if (updates.label !== undefined && updates.label.trim() !== target.label) next.label = updates.label.trim();
     if (updates.group !== undefined && updates.group.trim() !== target.group) next.group = updates.group.trim();
-    if (Object.keys(next).length > 0) store.updatePrizeImage(id, next);
+    if (Object.keys(next).length === 0) return;
+    store.updatePrizeImage(id, next);
+    toast.success(next.label !== undefined ? `已保存图片说明「${next.label}」` : next.group ? `已设为分组「${next.group}」` : '已清除分组');
   }, []);
 
   // 删除：store 拒绝的不动 blob，成功的才清理 IndexedDB
@@ -156,7 +158,9 @@ export function ImagePoolTab() {
 
   const handleBatchGroup = () => {
     const group = batchGroup.trim();
-    for (const id of selected) handleEdit(id, { group });
+    // 以 store 当前值计算差异后逐张写入（空 = 清除分组）；不走 handleEdit，避免每张各弹一条 toast
+    const store = useLotteryStore.getState();
+    for (const u of groupUpdates(store.prizeImages, selected, group)) store.updatePrizeImage(u.id, { group: u.group });
     toast.success(group ? `已将 ${selected.length} 张图片设为分组「${group}」` : `已清除 ${selected.length} 张图片的分组`);
   };
 
@@ -224,7 +228,7 @@ export function ImagePoolTab() {
             disabled={busy !== null}
           />
         </div>
-        <span className="text-sm text-muted-foreground">可多选，或将图片拖到此处；单张不超过 20MB，会自动压缩</span>
+        <span className="text-sm text-muted-foreground">可多选，或将图片拖到此处；单张不超过 20MB，会自动压缩（长边 1920px）。图片说明修改后立即保存，大屏需在「大屏样式」中开启「图片下方显示图片说明」才会显示</span>
         <datalist id={groupListId}>
           {groupSuggestions.map((name) => <option key={name} value={name} />)}
         </datalist>

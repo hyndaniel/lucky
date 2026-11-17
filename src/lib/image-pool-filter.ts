@@ -67,3 +67,15 @@ export function filterImages(
     return true;
   });
 }
+
+// 把 group 写到 ids 上：只返回真正需要改的条目（已是该分组、或 id 不存在的跳过）
+export function groupUpdates(images: PrizeImage[], ids: string[], group: string): { id: string; group: string }[] {
+  const byId = new Map(images.map((img) => [img.id, img]));
+  const target = group.trim();
+  const updates: { id: string; group: string }[] = [];
+  for (const id of new Set(ids)) {
+    const img = byId.get(id);
+    if (img && img.group !== target) updates.push({ id, group: target });
+  }
+  return updates;
+}

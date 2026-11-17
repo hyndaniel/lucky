@@ -22,6 +22,8 @@ const PRESET_COLUMNS = [1, 2, 3, 4, 5, 3, 4, 4, 5, 5, 4, 4];
 const MIN_MODULE_SIZE = 40;
 // scale > 1 时整个网格（含间距）最多比容器大这个倍数；超出部分向四周对称溢出
 const MAX_OVERFLOW = 1.6;
+// 大屏模块网格的格间距（px）；后台预览用同一个值
+export const GRID_GAP = 20;
 export const DEPT_RATIO = 0.7; // 部门字号 / 名字字号
 
 export function getGridColumns(count: number, override = 0): number {

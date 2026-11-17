@@ -355,18 +355,25 @@ export const STORAGE_QUOTA_ERROR = '存储空间不足，请减小 Logo 或背�
 export function writeStorageSafely(name: string, value: string): boolean {
   try {
     localStorage.setItem(name, obfuscateData(value));
+    lastWriteFailed = false;
     return true;
   } catch {
     try {
       localStorage.setItem(name, value);
+      lastWriteFailed = false;
       return true;
     } catch (error) {
+      lastWriteFailed = true;
       console.error('[lucky-draw] 持久化失败：', error);
       toast.error(STORAGE_QUOTA_ERROR, { id: 'storage-quota' });
       return false;
     }
   }
 }
+
+// 最近一次写入是否失败。失败时内存状态比 localStorage 新：后台每秒的 rehydrate 若照常合并，
+// 会把刚做的修改（批量分组、说明等）用旧存档还原，看起来像「操作被清掉」。见 merge
+let lastWriteFailed = false
 
 export const useLotteryStore = create<LotteryState>()(
   persist(
@@ -717,6 +724,8 @@ export const useLotteryStore = create<LotteryState>()(
       migrate: (persistedState) => migratePersistedState(persistedState) as LotteryState,
       // 每次 rehydrate 都会调用：浅合并后把设置补成完整结构，防止旧数据缺字段
       merge: (persistedState, currentState) => {
+        // 写入失败期间保留内存状态（后台是唯一写入方，内存即最新）；下一次写入成功后恢复同步
+        if (lastWriteFailed) return currentState;
         const persisted = (isRecord(persistedState) ? persistedState : {}) as Partial<LotteryData>;
         return { ...currentState, ...persisted, settings: normalizeSettings(persisted.settings ?? currentState.settings) };
       },

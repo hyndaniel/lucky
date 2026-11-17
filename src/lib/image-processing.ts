@@ -3,7 +3,9 @@
 export const MAX_IMAGE_FILE_BYTES = 20 * 1024 * 1024;
 
 const OUTPUT_TYPE = 'image/webp';
-const OUTPUT_QUALITY = 0.88;
+export const OUTPUT_QUALITY = 0.92;
+// 长边上限：大屏全屏展示奖品，1024 放大后发糊
+export const DEFAULT_MAX_SIDE = 1920;
 
 // 等比缩放到长边不超过 maxSide；已在范围内则不变。结果取整且 ≥1
 export function fitWithin(
@@ -59,7 +61,7 @@ async function encodeScaled(bitmap: ImageBitmap, width: number, height: number):
 
 // 上传前压缩：缩到长边 ≤ maxSide 并转 webp。不支持 webp 的浏览器（Safari）会给出其它格式，
 // 同样只在比原文件小时采用；结果不更小或任何一步失败时返回原文件
-export async function prepareImageBlob(file: File, maxSide = 1024): Promise<Blob> {
+export async function prepareImageBlob(file: File, maxSide = DEFAULT_MAX_SIDE): Promise<Blob> {
   if (isPassthrough(file)) return file;
   let bitmap: ImageBitmap | null = null;
   try {

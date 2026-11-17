@@ -15,12 +15,18 @@ import {
 import { describeImagePool, describeNamePool, formatLayoutHint } from '@/lib/pool-summary';
 import { advanceLabel } from '@/lib/phase-labels';
 import { isAdvanceTooSoon, isSpaceOwnedByControl } from '@/lib/advance-guard';
-import type { ActionResult, CurrentRound, Prize } from '@/lib/types';
+import type { ActionResult, CurrentRound, DrawMode, Prize } from '@/lib/types';
 import { ImagePoolPicker } from '@/components/admin/ImagePoolPicker';
 import { NamePoolPicker } from '@/components/admin/NamePoolPicker';
 import { RoundResultCard } from '@/components/admin/RoundResultCard';
 
 const QUICK_COUNTS = [1, 2, 3, 6, 10, 12];
+
+const DRAW_MODES: { value: DrawMode; label: string; hint: string }[] = [
+  { value: 'image-then-name', label: '先奖品后名字', hint: '先滚动抽出奖品图片，再抽出获奖名字' },
+  { value: 'image-only', label: '只抽奖品', hint: '只抽图片，不抽名字；中奖记录不含人员' },
+  { value: 'name-only', label: '只抽名字', hint: '只抽名字，不抽图片' },
+];
 
 const SCENES = [
   { mode: 'welcome', icon: '🎉', label: '欢迎页' },
@@ -198,6 +204,23 @@ export function LiveControlPanel({ controlledMode, onEditPrize, onDeletePrize, o
                 剩余全部
               </Button>
               {layoutHint && <span className="text-sm text-muted-foreground font-mono" title="每排数量 × 排数">布局 {layoutHint}</span>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="抽奖模式">
+              <Label className="mr-1">抽奖模式</Label>
+              {DRAW_MODES.map((m) => (
+                <Button
+                  key={m.value}
+                  size="sm"
+                  variant={(round?.drawMode ?? 'image-then-name') === m.value ? 'default' : 'outline'}
+                  aria-pressed={(round?.drawMode ?? 'image-then-name') === m.value}
+                  title={m.hint}
+                  disabled={!configEditable || noPrize}
+                  onClick={() => showFailure(setRoundConfig({ drawMode: m.value }))}
+                >
+                  {m.label}
+                </Button>
+              ))}
+              {!configEditable && <span className="text-xs text-muted-foreground">本轮已开始，下一轮开始前可改</span>}
             </div>
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="text-muted-foreground w-14">图片池</span>

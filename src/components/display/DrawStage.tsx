@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLotteryStore } from '@/store/useStore';
-import { getRemainingSlots, resolveImagePool, resolveNamePool, sampleDistinct } from '@/lib/draw-engine';
-import { computeModuleLayout, DEPT_RATIO, effectiveGap } from '@/lib/grid-layout';
+import { getRemainingSlots, imageLabelFor, resolveImagePool, resolveNamePool, sampleDistinct } from '@/lib/draw-engine';
+import { computeModuleLayout, DEPT_RATIO, effectiveGap, GRID_GAP } from '@/lib/grid-layout';
 import { fitFontSize } from '@/lib/fit-text';
 import { createTextMeasurer } from '@/lib/text-measure';
 import { DEFAULT_MODULE_COUNT } from '@/lib/defaults';
@@ -26,7 +26,6 @@ const PHASE_TEXT: Record<RoundPhase, string> = {
 const EXHAUSTED_TEXT = '该奖项已全部抽完';
 const NO_PRIZE_TEXT = '请在后台选择奖项';
 
-const GRID_GAP = 20;
 // 颜色一律 inline（index.css 在 .hermes-display-board 下用 !important 覆盖了若干 Tailwind 颜色类）
 const COLOR_ACCENT = '#d86632';
 
@@ -175,7 +174,7 @@ export default function DrawStage() {
     // 奖品已定格：图片固定为本轮结果（name-only 没有图片结果）
     const imageId = resultImageIds[i] ?? null;
     const winner = phase === 'completed' ? roundWinners[i] : undefined;
-    const label = (imageId ? imageById.get(imageId)?.label : undefined) ?? winner?.imageLabel ?? null;
+    const label = imageLabelFor(imageById, imageId, winner?.imageLabel);
     if (rollingKind === 'name') {
       return { state: 'rolling', rollingPart: 'name', imageId, name: rollingItems[i] ?? null, label, dept: null, showImage };
     }

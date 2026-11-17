@@ -156,3 +156,14 @@ export function validateNameRollStart(input: RollStartInput): string | null {
   if (!input.prize) return NO_PRIZE_ERROR;
   return namePoolShortage(input.prize, input);
 }
+
+// 大屏显示的图片说明：优先读图片池里的最新说明（后台改了立即生效），
+// 图片已被删除时退回中奖记录里的快照；都没有为 null。imageById 由调用方按 prizeImages 缓存
+export function imageLabelFor(
+  imageById: ReadonlyMap<string, PrizeImage>,
+  imageId: string | null | undefined,
+  snapshot: string | undefined,
+): string | null {
+  const live = imageId ? imageById.get(imageId)?.label : undefined;
+  return live ?? snapshot ?? null;
+}

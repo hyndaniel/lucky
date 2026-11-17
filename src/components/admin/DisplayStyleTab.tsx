@@ -14,15 +14,30 @@ import { MediaUnavailableAlert } from '@/components/admin/MediaUnavailableAlert'
 import { useLotteryStore } from '@/store/useStore';
 import { useMediaStoreAvailable } from '@/hooks/useMediaStoreAvailable';
 import { deleteMedia, putMedia } from '@/lib/media-store';
-import { computeModuleLayout } from '@/lib/grid-layout';
+import { computeModuleLayout, effectiveGap, GRID_GAP } from '@/lib/grid-layout';
 import { playCelebration } from '@/lib/effects';
 import { soundEngine } from '@/lib/sound';
-import { FONT_PRESETS } from '@/lib/defaults';
+import { PageLayoutEditor } from '@/components/admin/PageLayoutEditor';
+import { FontManager } from '@/components/admin/FontManager';
+import { useCustomFonts } from '@/hooks/useCustomFonts';
+import { createTextMeasurer } from '@/lib/text-measure';
+import {
+  PAGE_LABELS, PREVIEW_SAMPLE, fontOptions, fromSelectValue, previewFontSizes, toSelectValue, type LayoutPage,
+} from '@/lib/layout-editor';
 import type {
-  EffectKind, RollSoundKind, SoundSettings, TextStyle, WinSoundKind,
+  EffectKind, LabelPosition, ModuleShape, RollSoundKind, SoundSettings, TextStyle, UploadedFont, WinSoundKind,
 } from '@/lib/types';
 
-const FOLLOW_FONT = '__follow__'; // Select 不允许空字符串值，用哨兵代表「跟随大屏字体」
+const LAYOUT_PAGES: LayoutPage[] = ['welcome', 'prize', 'lottery'];
+const SHAPE_OPTIONS: { value: ModuleShape; label: string }[] = [
+  { value: 'square', label: '方形' },
+  { value: 'rounded', label: '圆角' },
+  { value: 'circle', label: '圆形' },
+];
+const LABEL_POSITION_OPTIONS: { value: LabelPosition; label: string }[] = [
+  { value: 'above', label: '图片上方' },
+  { value: 'below', label: '图片下方' },
+];
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 const PREVIEW_WIDTH = 300;
 const PREVIEW_HEIGHT = 360;
@@ -102,6 +117,20 @@ function SliderRow({ label, value, min, max, unit, onChange }: SliderRowProps) {
   );
 }
 
+function ChoiceRow<T extends string>({ label, value, options, onChange }: {
+  label: string; value: T; options: { value: T; label: string }[]; onChange: (v: T) => void;
+}) {
+  return (
+    <div role="group" aria-label={label} className="flex gap-1">
+      {options.map((o) => (
+        <Button key={o.value} type="button" size="sm" variant={value === o.value ? 'default' : 'outline'} aria-pressed={value === o.value} onClick={() => onChange(o.value)}>
+          {o.label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
 function ColorRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -123,23 +152,24 @@ function ColorRow({ label, value, onChange }: { label: string; value: string; on
 interface TextStyleEditorProps {
   title: string;
   style: TextStyle;
+  fonts: UploadedFont[];
   onChange: (patch: Partial<TextStyle>) => void;
 }
 
 // 字体 / 字号 / 颜色；fontFamily '' = 跟随大屏字体
-function TextStyleEditor({ title, style, onChange }: TextStyleEditorProps) {
+function TextStyleEditor({ title, style, fonts, onChange }: TextStyleEditorProps) {
+  const options = fontOptions(fonts, style.fontFamily);
   return (
     <Section title={title}>
       <div className="space-y-2">
         <Label>字体</Label>
         <Select
-          value={style.fontFamily || FOLLOW_FONT}
-          onValueChange={(v) => onChange({ fontFamily: v === FOLLOW_FONT ? '' : v })}
+          value={toSelectValue(style.fontFamily)}
+          onValueChange={(v) => onChange({ fontFamily: fromSelectValue(v) })}
         >
           <SelectTrigger className="w-full"><SelectValue placeholder="选择字体" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value={FOLLOW_FONT}>跟随大屏字体</SelectItem>
-            {FONT_PRESETS.map((font) => (
+            {options.map((font) => (
               <SelectItem key={font.value} value={font.value}>{font.label}</SelectItem>
             ))}
           </SelectContent>
@@ -238,10 +268,17 @@ export function DisplayStyleTab() {
   const effects = useLotteryStore((s) => s.settings.effects);
   const sound = useLotteryStore((s) => s.settings.sound);
   const displayFont = useLotteryStore((s) => s.settings.fontFamily);
+  const showDept = useLotteryStore((s) => s.settings.showDept) === true;
+  const fonts = useLotteryStore((s) => s.settings.fonts);
+  const welcomeLayout = useLotteryStore((s) => s.settings.welcomeLayout);
+  const prizeLayout = useLotteryStore((s) => s.settings.prizeLayout);
+  const lotteryLayout = useLotteryStore((s) => s.settings.lotteryLayout);
   const updateModuleStyle = useLotteryStore((s) => s.updateModuleStyle);
   const updateEffects = useLotteryStore((s) => s.updateEffects);
   const updateSound = useLotteryStore((s) => s.updateSound);
   const mediaAvailable = useMediaStoreAvailable();
+  useCustomFonts(fonts); // 让字体下拉与预览能用已上传字体
+  const pageLayouts = { welcome: welcomeLayout, prize: prizeLayout, lottery: lotteryLayout };
 
   const stopEffectRef = useRef<(() => void) | null>(null);
   const soundTimersRef = useRef<number[]>([]);
@@ -258,15 +295,25 @@ export function DisplayStyleTab() {
     soundEngine.stopAll();
   }, []);
 
+  // 预览与大屏同一套：同样的格间距、部门行高度、统一字号（对样例文字测算，不再被省略号截断）
   const layout = useMemo(() => computeModuleLayout({
-    containerWidth: PREVIEW_WIDTH, containerHeight: PREVIEW_HEIGHT, count: 1, columns: 0, gap: 0,
+    containerWidth: PREVIEW_WIDTH, containerHeight: PREVIEW_HEIGHT, count: 1, columns: 0, gap: GRID_GAP,
     scale: moduleStyle.moduleScale / 100,
     nameFontSize: moduleStyle.nameStyle.fontSize, labelFontSize: moduleStyle.labelStyle.fontSize,
     showName: moduleStyle.showName, showLabel: moduleStyle.showImageLabel,
+    showDept: showDept && moduleStyle.showName,
   }), [
     moduleStyle.moduleScale, moduleStyle.nameStyle.fontSize, moduleStyle.labelStyle.fontSize,
-    moduleStyle.showName, moduleStyle.showImageLabel,
+    moduleStyle.showName, moduleStyle.showImageLabel, showDept,
   ]);
+  const nameFamily = moduleStyle.nameStyle.fontFamily || displayFont || '';
+  const labelFamily = moduleStyle.labelStyle.fontFamily || displayFont || '';
+  const previewSizes = previewFontSizes(
+    layout,
+    showDept && moduleStyle.showName,
+    (weight) => createTextMeasurer(weight === 700 ? nameFamily : labelFamily, weight),
+  );
+  const previewGap = effectiveGap(GRID_GAP, moduleStyle.moduleScale / 100);
 
   const toggleKind = (kind: EffectKind) => {
     const kinds = effects.kinds.includes(kind)
@@ -311,11 +358,12 @@ export function DisplayStyleTab() {
         <Section title="显示">
           <SwitchRow label="图片下方显示名字" checked={moduleStyle.showName} onChange={(showName) => updateModuleStyle({ showName })} />
           <SwitchRow label="图片下方显示图片说明" checked={moduleStyle.showImageLabel} onChange={(showImageLabel) => updateModuleStyle({ showImageLabel })} />
+          <p className="text-xs text-muted-foreground">图片说明在「图片池」里编辑；只有开启上面的开关，大屏才会显示。</p>
         </Section>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <TextStyleEditor title="名字文字" style={moduleStyle.nameStyle} onChange={(nameStyle) => updateModuleStyle({ nameStyle })} />
-          <TextStyleEditor title="说明文字" style={moduleStyle.labelStyle} onChange={(labelStyle) => updateModuleStyle({ labelStyle })} />
+          <TextStyleEditor title="名字文字" style={moduleStyle.nameStyle} fonts={fonts} onChange={(nameStyle) => updateModuleStyle({ nameStyle })} />
+          <TextStyleEditor title="说明文字" style={moduleStyle.labelStyle} fonts={fonts} onChange={(labelStyle) => updateModuleStyle({ labelStyle })} />
         </div>
 
         <Section title="模块">
@@ -335,8 +383,26 @@ export function DisplayStyleTab() {
               </SelectContent>
             </Select>
           </div>
+          <div className="flex items-center justify-between gap-4">
+            <Label>模块外形</Label>
+            <ChoiceRow label="模块外形" value={moduleStyle.shape} options={SHAPE_OPTIONS} onChange={(shape) => updateModuleStyle({ shape })} />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <Label>文字位置</Label>
+            <ChoiceRow label="文字位置" value={moduleStyle.labelPosition} options={LABEL_POSITION_OPTIONS} onChange={(labelPosition) => updateModuleStyle({ labelPosition })} />
+          </div>
           <ColorRow label="背景颜色" value={moduleStyle.backgroundColor} onChange={(backgroundColor) => updateModuleStyle({ backgroundColor })} />
           <SliderRow label="背景透明度" value={moduleStyle.backgroundOpacity} min={0} max={100} unit="%" onChange={(backgroundOpacity) => updateModuleStyle({ backgroundOpacity })} />
+        </Section>
+
+        {LAYOUT_PAGES.map((page) => (
+          <Section key={page} title={`${PAGE_LABELS[page]}排版`}>
+            <PageLayoutEditor page={page} layout={pageLayouts[page]} fonts={fonts} />
+          </Section>
+        ))}
+
+        <Section title="自定义字体">
+          <FontManager fonts={fonts} />
         </Section>
 
         <Section title="中奖特效">
@@ -414,13 +480,18 @@ export function DisplayStyleTab() {
         <Section title="预览">
           <div
             className="flex items-center justify-center rounded-md border"
-            style={{ width: '100%', minHeight: PREVIEW_HEIGHT, background: '#fff7ef' }}
+            style={{ width: '100%', minHeight: PREVIEW_HEIGHT, background: '#fff7ef', padding: previewGap / 2 }}
           >
             <PrizeModule
               layout={layout}
               imageUrl={SAMPLE_IMAGE}
-              label="示例奖品"
-              name="张三"
+              label={PREVIEW_SAMPLE.label}
+              name={PREVIEW_SAMPLE.name}
+              dept={PREVIEW_SAMPLE.dept}
+              showDept={showDept && moduleStyle.showName}
+              nameFontSize={previewSizes.nameFontSize}
+              labelFontSize={previewSizes.labelFontSize}
+              deptFontSize={previewSizes.deptFontSize}
               style={moduleStyle}
               state="revealed"
               fontFamily={displayFont}

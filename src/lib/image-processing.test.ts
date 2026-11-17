@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  DEFAULT_MAX_SIDE,
   MAX_IMAGE_FILE_BYTES,
+  OUTPUT_QUALITY,
   fitWithin,
   labelFromFileName,
   prepareImageBlob,
@@ -99,5 +101,33 @@ describe('prepareImageBlob 解码方向', () => {
 describe('MAX_IMAGE_FILE_BYTES', () => {
   it('为 20MB', () => {
     expect(MAX_IMAGE_FILE_BYTES).toBe(20 * 1024 * 1024);
+  });
+});
+
+describe('图片保真参数', () => {
+  it('默认长边 1920、webp 质量 0.92', () => {
+    expect(DEFAULT_MAX_SIDE).toBe(1920);
+    expect(OUTPUT_QUALITY).toBe(0.92);
+  });
+
+  it('默认长边下 4000×3000 缩到 1920×1440', () => {
+    expect(fitWithin(4000, 3000, DEFAULT_MAX_SIDE)).toEqual({ width: 1920, height: 1440 });
+  });
+
+  it('prepareImageBlob 默认按 1920 解码后缩放（不传 maxSide）', async () => {
+    const close = vi.fn();
+    vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 4000, height: 3000, close })));
+    const toBlob = vi.fn();
+    vi.stubGlobal('OffscreenCanvas', class {
+      constructor(width: number, height: number) { sizes.push([width, height]); }
+      getContext() { return { drawImage() {} }; }
+      async convertToBlob(opts: { quality: number }) { toBlob(opts.quality); return new Blob(['x']); }
+    });
+    const sizes: number[][] = [];
+    const file = new File([new Uint8Array(100)], 'big.jpg', { type: 'image/jpeg' });
+    await prepareImageBlob(file);
+    vi.unstubAllGlobals();
+    expect(sizes).toEqual([[1920, 1440]]);
+    expect(toBlob).toHaveBeenCalledWith(0.92);
   });
 });
