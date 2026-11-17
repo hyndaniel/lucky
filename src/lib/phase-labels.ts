@@ -1,4 +1,4 @@
-import type { RoundPhase } from '@/lib/types';
+import type { DrawMode, RoundPhase } from '@/lib/types';
 
 // 后台头部 Badge 的阶段文案
 export const PHASE_LABELS: Record<RoundPhase, string> = {
@@ -17,3 +17,10 @@ export const ADVANCE_LABELS: Record<RoundPhase, string> = {
   rollingNames: '停止 · 定格名字',
   completed: '下一轮',
 };
+
+// 主按钮文案：name-only 没有奖品阶段，idle 即「开始抽名字」；image-only 停止即完成
+export function advanceLabel(phase: RoundPhase, drawMode: DrawMode): string {
+  if (drawMode === 'name-only' && phase === 'idle') return '开始抽名字';
+  if (drawMode === 'image-only' && phase === 'rollingPrizes') return '停止 · 定格奖品并完成';
+  return ADVANCE_LABELS[phase];
+}

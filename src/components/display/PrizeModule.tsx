@@ -17,6 +17,7 @@ export interface PrizeModuleProps {
   rollingPart?: 'image' | 'name'; // rolling 时正在变化的部分：阶段一为图片（默认），阶段二为名字（图片不动）
   dept?: string | null;           // 部门；仅在 showDept 且 state 为 revealed 时显示在名字下方
   showDept?: boolean;
+  showImage?: boolean;            // false（只抽名字）时不渲染图片区与图片说明，名字在卡片内居中；默认 true
   // 全体模块共用的固定字号（由 DrawStage 统一测算）；缺省时用 layout 里的字号
   nameFontSize?: number;
   labelFontSize?: number;
@@ -77,7 +78,7 @@ function FitLine({ text, fontSize, textStyle, fontFamily, fontWeight, extraStyle
 // 抽奖模块（卡片）：方形图片区 + 图片说明 + 名字。纯展示，大屏与后台样式预览共用
 export default function PrizeModule({
   layout, imageUrl, label, name, style, state, fontFamily, rollingPart = 'image',
-  dept, showDept = false, nameFontSize: nameSize, labelFontSize: labelSize, deptFontSize: deptSize,
+  dept, showDept = false, showImage = true, nameFontSize: nameSize, labelFontSize: labelSize, deptFontSize: deptSize,
 }: PrizeModuleProps) {
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const prevStateRef = useRef(state);
@@ -124,35 +125,39 @@ export default function PrizeModule({
       style={{
         width: cardWidth, height: cardHeight, padding, boxSizing: 'border-box', flexShrink: 0,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
+        // 无图片区时卡片尺寸不变，文字整体垂直居中
+        justifyContent: showImage ? undefined : 'center',
         borderRadius: radius + Math.round(padding / 2),
         background: toRgba(style.backgroundColor, style.backgroundOpacity),
         // 细边框用 box-shadow 画，不占布局尺寸
         boxShadow: `0 0 0 1px ${BORDER_RING}, 0 10px 28px ${CARD_SHADOW}`,
       }}
     >
-      {labelAbove && labelLine}
-      <div
-        style={{
-          width: moduleSize, height: moduleSize, flexShrink: 0, borderRadius: imageRadius, overflow: 'hidden',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: src ? 'transparent' : PLACEHOLDER_BG,
-        }}
-      >
-        {src ? (
-          <img
-            src={src}
-            alt={label ?? ''}
-            draggable={false}
-            style={{ width: '100%', height: '100%', objectFit: 'contain', ...(rollingImage ? ROLLING_IMAGE : null) }}
-          />
-        ) : (
-          // 空白模块与图片缺失时显示淡色 "?"
-          <span style={{ fontSize: Math.round(moduleSize * 0.42), fontWeight: 800, lineHeight: 1, color: PLACEHOLDER_COLOR }}>
-            ?
-          </span>
-        )}
-      </div>
-      {!labelAbove && labelLine}
+      {showImage && labelAbove && labelLine}
+      {showImage && (
+        <div
+          style={{
+            width: moduleSize, height: moduleSize, flexShrink: 0, borderRadius: imageRadius, overflow: 'hidden',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: src ? 'transparent' : PLACEHOLDER_BG,
+          }}
+        >
+          {src ? (
+            <img
+              src={src}
+              alt={label ?? ''}
+              draggable={false}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', ...(rollingImage ? ROLLING_IMAGE : null) }}
+            />
+          ) : (
+            // 空白模块与图片缺失时显示淡色 "?"
+            <span style={{ fontSize: Math.round(moduleSize * 0.42), fontWeight: 800, lineHeight: 1, color: PLACEHOLDER_COLOR }}>
+              ?
+            </span>
+          )}
+        </div>
+      )}
+      {showImage && !labelAbove && labelLine}
       {style.showName && nameFontSize > 0 && (
         // 名字为空时保留整行高度，阶段二开始前不塌陷
         <FitLine

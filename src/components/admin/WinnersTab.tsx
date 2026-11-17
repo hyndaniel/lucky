@@ -199,7 +199,7 @@ export function WinnersTab() {
           ) : rows.map((w) => {
             const url = w.imageId ? urls[w.imageId] : undefined;
             return (
-              <TableRow key={`${w.roundId}-${w.id}`}>
+              <TableRow key={`${w.roundId}-${w.id}-${w.imageId ?? ''}`}>
                 <TableCell>{w.roundNo !== undefined ? `第 ${w.roundNo} 轮` : '-'}</TableCell>
                 <TableCell><Badge variant="outline">{prizeNameMap.get(w.prizeId) ?? '-'}</Badge></TableCell>
                 <TableCell>
@@ -219,7 +219,7 @@ export function WinnersTab() {
                     </div>
                   )}
                 </TableCell>
-                <TableCell className="font-medium">{w.name}</TableCell>
+                <TableCell className="font-medium">{w.name || '-'}</TableCell>
                 <TableCell className="font-mono text-muted-foreground">{w.serial ? formatSerial('N', w.serial) : '-'}</TableCell>
                 <TableCell>{w.dept || '-'}</TableCell>
                 <TableCell className="font-mono text-muted-foreground">{new Date(w.wonAt).toLocaleTimeString()}</TableCell>

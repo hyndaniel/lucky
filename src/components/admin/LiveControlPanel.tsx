@@ -13,7 +13,7 @@ import {
   validateNameRollStart, validatePrizeRollStart, type RollStartInput,
 } from '@/lib/draw-engine';
 import { describeImagePool, describeNamePool, formatLayoutHint } from '@/lib/pool-summary';
-import { ADVANCE_LABELS } from '@/lib/phase-labels';
+import { advanceLabel } from '@/lib/phase-labels';
 import { isAdvanceTooSoon, isSpaceOwnedByControl } from '@/lib/advance-guard';
 import type { ActionResult, CurrentRound, Prize } from '@/lib/types';
 import { ImagePoolPicker } from '@/components/admin/ImagePoolPicker';
@@ -226,7 +226,7 @@ export function LiveControlPanel({ controlledMode, onEditPrize, onDeletePrize, o
                 onClick={tryAdvance}
               >
                 {rolling ? <Square className="w-6 h-6 mr-3 fill-current" /> : <Play className="w-6 h-6 mr-3 fill-current" />}
-                {ADVANCE_LABELS[phase]}
+                {advanceLabel(phase, round?.drawMode ?? 'image-then-name')}
               </Button>
               {canCancel && (
                 <Button variant="outline" onClick={() => { lastAdvanceAt.current = 0; showFailure(cancelRound()); }}><Undo2 className="w-4 h-4 mr-1" /> 取消本轮</Button>

@@ -19,6 +19,15 @@ function splitStage(key: string): [string, string] {
   return at < 0 ? ['', ''] : [key.slice(0, at), key.slice(at + 1)];
 }
 
+// 同一轮次内「滚动 → 自然停止」的转换（取消回 idle / prizesRevealed、换轮次都不算）。
+// image-only 的奖品滚动直接进入 completed，与名字滚动 → completed 一样要等减速结束后放特效
+export function isNaturalStop(prevId: string, prevPhase: string, id: string, nextPhase: string): boolean {
+  return prevId !== '' && prevId === id && (
+    (prevPhase === 'rollingPrizes' && (nextPhase === 'prizesRevealed' || nextPhase === 'completed'))
+    || (prevPhase === 'rollingNames' && nextPhase === 'completed')
+  );
+}
+
 function stopCelebration(ref: RefObject<(() => void) | null>): void {
   ref.current?.();
   ref.current = null;
@@ -54,11 +63,7 @@ export function useStageFx({ stageKey, phase, animating, sound, effects, rollAud
     }
 
     const [prevId, prevPhase] = splitStage(prev);
-    const naturalStop = prevId !== '' && prevId === id && (
-      (prevPhase === 'rollingPrizes' && nextPhase === 'prizesRevealed')
-      || (prevPhase === 'rollingNames' && nextPhase === 'completed')
-    );
-    if (naturalStop) {
+    if (isNaturalStop(prevId, prevPhase, id, nextPhase)) {
       settleKeyRef.current = stageKey; // 减速结束再 stopRoll + 特效
       return;
     }

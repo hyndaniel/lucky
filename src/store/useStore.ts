@@ -239,15 +239,22 @@ const rollInput = (state: LotteryData, round: CurrentRound): RollStartInput => (
   round,
 });
 
-// 名字结果按下标与本轮图片配对，生成中奖记录（参与者与图片均为快照）
+// image-only 的中奖记录没有参与者：不造占位人，名字 / 部门 / id 留空，只带图片。
+// id 为 '' 不会与任何真实参与者撞号（名字去重按 id），所以不消耗名字池
+const NO_PERSON: Participant = { id: '', serial: 0, name: '', dept: '', mustWinPrizeId: null, bannedPrizes: [], weight: 1 };
+
+// 名字结果按下标与本轮图片配对，生成中奖记录（参与者与图片均为快照）。
+// 两边都可缺：name-only 没有图片（imageId 为 undefined），image-only 没有名字（用 NO_PERSON）
 function buildWinners(state: LotteryData, round: CurrentRound, prize: Prize, nameIds: string[]): Winner[] {
   const people = new Map(state.participants.map((p) => [p.id, p]));
   const images = new Map(state.prizeImages.map((img) => [img.id, img]));
   const wonAt = Date.now();
-  return nameIds.map((personId, index) => {
-    const person = people.get(personId)!;
-    const imageId = round.resultImageIds[index];
-    const image = images.get(imageId);
+  const count = Math.max(nameIds.length, round.resultImageIds.length);
+  return Array.from({ length: count }, (_, index) => {
+    const personId = nameIds[index];
+    const person = personId === undefined ? NO_PERSON : people.get(personId)!;
+    const imageId: string | undefined = round.resultImageIds[index];
+    const image = imageId === undefined ? undefined : images.get(imageId);
     return {
       ...person,
       bannedPrizes: [...person.bannedPrizes],
@@ -456,7 +463,7 @@ export const useLotteryStore = create<LotteryState>()(
         const state = get();
         const round = ensureRound(state);
         if (!round) return fail(NO_PRIZE_ERROR);
-        if (round.phase !== 'idle') return fail(PHASE_ERROR);
+        if (round.phase !== 'idle' || round.drawMode === 'name-only') return fail(PHASE_ERROR);
         const reason = validatePrizeRollStart(rollInput(state, round));
         if (reason) return fail(reason);
         set({
@@ -473,7 +480,20 @@ export const useLotteryStore = create<LotteryState>()(
         const shortage = imagePoolShortage(rollInput(state, round));
         if (shortage) return fail(shortage);
         const pool = resolveImagePool(state.prizeImages, state.winners, round.imagePoolIds);
-        set({ currentRound: { ...round, phase: 'prizesRevealed', resultImageIds: drawImages(pool, round.moduleCount) } });
+        const resultImageIds = drawImages(pool, round.moduleCount);
+        if (round.drawMode === 'image-only') {
+          // 只抽图片：定格即完成，写入只有图片的记录；不消耗任何名字
+          const prize = findCurrentPrize(state);
+          if (!prize) return fail(NO_PRIZE_ERROR);
+          const completed: CurrentRound = { ...round, phase: 'completed', resultImageIds };
+          set({
+            winners: [...state.winners, ...buildWinners(state, completed, prize, [])],
+            roundCounter: state.roundCounter + 1,
+            currentRound: completed,
+          });
+          return OK;
+        }
+        set({ currentRound: { ...round, phase: 'prizesRevealed', resultImageIds } });
         return OK;
       },
 
@@ -483,7 +503,12 @@ export const useLotteryStore = create<LotteryState>()(
         if (!round) return fail(PHASE_ERROR);
         const reason = validateNameRollStart(rollInput(state, round));
         if (reason) return fail(reason);
-        set({ currentRound: { ...round, phase: 'rollingNames', resultNameIds: [] } });
+        // name-only 从 idle 直接开始（没有奖品阶段），与 startPrizeRoll 一样切到抽奖页
+        const direct = round.drawMode === 'name-only';
+        set({
+          currentRound: { ...round, phase: 'rollingNames', resultNameIds: [], ...(direct ? { resultImageIds: [] } : null) },
+          ...(direct ? { viewMode: 'lottery' as const } : null),
+        });
         return OK;
       },
 
@@ -510,7 +535,7 @@ export const useLotteryStore = create<LotteryState>()(
       advanceRound: () => {
         const { currentRound, startPrizeRoll, stopPrizeRoll, startNameRoll, stopNameRoll, nextRound } = get();
         switch (currentRound?.phase ?? 'idle') {
-          case 'idle': return startPrizeRoll();
+          case 'idle': return currentRound?.drawMode === 'name-only' ? startNameRoll() : startPrizeRoll();
           case 'rollingPrizes': return stopPrizeRoll();
           case 'prizesRevealed': return startNameRoll();
           case 'rollingNames': return stopNameRoll();
@@ -524,7 +549,9 @@ export const useLotteryStore = create<LotteryState>()(
           return OK;
         }
         if (round?.phase === 'rollingNames') {
-          set({ currentRound: { ...round, phase: 'prizesRevealed', resultNameIds: [] } });
+          // name-only 没有奖品阶段，取消直接回 idle
+          const back = round.drawMode === 'name-only' ? { phase: 'idle' as const, resultImageIds: [] } : { phase: 'prizesRevealed' as const };
+          set({ currentRound: { ...round, ...back, resultNameIds: [] } });
           return OK;
         }
         return fail(PHASE_ERROR);

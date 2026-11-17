@@ -120,8 +120,8 @@ export function namePoolShortage(prize: Prize, input: RollStartInput): string | 
   return pool.length < n ? `可参与名字不足：需要 ${n} 人，当前可选 ${pool.length} 人` : null;
 }
 
-// 开始抽奖品前的校验：按顺序返回第一个不满足的原因，全部通过返回 null
-export function validatePrizeRollStart(input: RollStartInput): string | null {
+// 各模式开始前共有的校验：奖项、剩余名额、模块数（返回第一个不满足的原因）
+function commonStartError(input: RollStartInput): string | null {
   const { prize, winners, round } = input;
   if (!prize) return NO_PRIZE_ERROR;
   const remaining = getRemainingSlots(prize, winners);
@@ -130,12 +130,29 @@ export function validatePrizeRollStart(input: RollStartInput): string | null {
   const countError = moduleCountError(n);
   if (countError) return countError;
   if (n > remaining) return `本轮模块数（${n}）超过「${prize.name}」剩余名额（${remaining}）`;
-  return imagePoolShortage(input) ?? namePoolShortage(prize, input);
+  return null;
 }
 
-// 开始抽名字前的校验
+// 开始本轮前的校验（idle 阶段）：按顺序返回第一个不满足的原因，全部通过返回 null。
+// 只校验本模式会抽的池：image-only 不要求名字池，name-only 不要求图片池
+export function validatePrizeRollStart(input: RollStartInput): string | null {
+  const common = commonStartError(input);
+  if (common) return common;
+  const { prize, round } = input;
+  if (round.drawMode === 'image-only') return imagePoolShortage(input);
+  if (round.drawMode === 'name-only') return namePoolShortage(prize!, input);
+  return imagePoolShortage(input) ?? namePoolShortage(prize!, input);
+}
+
+// 开始抽名字前的校验：image-then-name 要求奖品已定格；name-only 从 idle 直接开始；image-only 不抽名字
 export function validateNameRollStart(input: RollStartInput): string | null {
-  if (input.round.phase !== 'prizesRevealed') return '请先抽取本轮奖品';
+  const { round } = input;
+  if (round.drawMode === 'image-only') return '当前模式不抽名字';
+  if (round.drawMode === 'name-only') {
+    if (round.phase !== 'idle') return '当前阶段不能开始抽名字';
+    return commonStartError(input) ?? namePoolShortage(input.prize!, input);
+  }
+  if (round.phase !== 'prizesRevealed') return '请先抽取本轮奖品';
   if (!input.prize) return NO_PRIZE_ERROR;
   return namePoolShortage(input.prize, input);
 }

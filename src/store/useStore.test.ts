@@ -1111,3 +1111,224 @@ describe('页面排版 / 字体 / 每轮抽奖模式', () => {
     expect(s().settings.moduleStyle.labelPosition).toBe('above');
   });
 });
+
+describe('抽奖模式：image-only', () => {
+  beforeEach(() => {
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'image-only', moduleCount: 3 });
+  });
+
+  it('idle → rollingPrizes → completed，写入只有图片的记录，不消耗名字', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().currentRound!.phase).toBe('rollingPrizes');
+    expect(s().viewMode).toBe('lottery');
+    expect(s().advanceRound()).toEqual(OK);
+
+    const done = s().currentRound!;
+    expect(done.phase).toBe('completed');
+    expect(done.resultImageIds).toHaveLength(3);
+    expect(done.resultNameIds).toEqual([]);
+    expect(s().roundCounter).toBe(1);
+    expect(s().winners).toHaveLength(3);
+    s().winners.forEach((w, i) => {
+      const img = s().prizeImages.find((x) => x.id === done.resultImageIds[i])!;
+      expect(w).toEqual({
+        id: '', serial: 0, name: '', dept: '', mustWinPrizeId: null, bannedPrizes: [], weight: 1,
+        prizeId: 'p1', roundId: done.id, roundNo: 1, wonAt: 1_700_000_000_000,
+        imageId: img.id, imageSerial: img.serial, imageLabel: img.label,
+      });
+    });
+  });
+
+  it('不消耗参与者：之后的 image-then-name 轮次仍能抽满全部 20 人', () => {
+    resetStore({ prizes: [{ id: 'p1', name: '一等奖', count: 40 }] });
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'image-only', moduleCount: 10 });
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(resolveNamePool(s().participants, s().winners, 'p1', null)).toHaveLength(20);
+
+    expect(s().nextRound()).toEqual(OK);
+    s().setRoundConfig({ drawMode: 'image-then-name', moduleCount: 10 });
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().nextRound()).toEqual(OK);
+    // 第三轮（name-only）能抽到剩下的 10 人，说明前面的 image-only 没有占名字
+    s().setRoundConfig({ drawMode: 'name-only', moduleCount: 10 });
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().advanceRound()).toEqual(OK);
+    const named = s().winners.filter((w) => w.id);
+    expect(named).toHaveLength(20);
+    expect(new Set(named.map((w) => w.id)).size).toBe(20);
+  });
+
+  it('下一轮的图片不与上一轮重复', () => {
+    resetStore({ prizeImages: range(6, (i) => image(i)) });
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'image-only', moduleCount: 3 });
+    s().advanceRound();
+    s().advanceRound();
+    const first = s().currentRound!.resultImageIds;
+    expect(s().nextRound()).toEqual(OK);
+    s().setRoundConfig({ drawMode: 'image-only' });
+    const pool = resolveImagePool(s().prizeImages, s().winners, s().currentRound!.imagePoolIds).map((i) => i.id);
+    expect(pool.filter((id) => first.includes(id))).toEqual([]);
+    s().advanceRound();
+    s().advanceRound();
+    const second = s().currentRound!.resultImageIds;
+    expect([...first, ...second].sort()).toEqual(range(6, (i) => `img${i}`));
+    expect(s().roundCounter).toBe(2);
+  });
+
+  it('图片不足时开始失败；名字池为空不影响', () => {
+    resetStore({ participants: [], prizeImages: range(2, (i) => image(i)) });
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'image-only', moduleCount: 3 });
+    expect(s().advanceRound()).toEqual(fail('可用奖品图片不足：需要 3 张，当前可选 2 张'));
+    expect(s().currentRound!.phase).toBe('idle');
+    resetStore({ participants: [] });
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'image-only', moduleCount: 3 });
+    expect(s().advanceRound()).toEqual(OK);
+  });
+
+  it('滚动中图片被删到不足时停止失败，停在 rollingPrizes 且不写记录', () => {
+    s().advanceRound();
+    useLotteryStore.setState({ prizeImages: s().prizeImages.slice(0, 2) });
+    expect(s().advanceRound()).toEqual(fail('可用奖品图片不足：需要 3 张，当前可选 2 张'));
+    expect(s().currentRound!.phase).toBe('rollingPrizes');
+    expect(s().winners).toEqual([]);
+  });
+
+  it('该模式下 startNameRoll 失败', () => {
+    expect(s().startNameRoll().ok).toBe(false);
+    s().advanceRound();
+    expect(s().startNameRoll().ok).toBe(false);
+    expect(s().currentRound!.phase).toBe('rollingPrizes');
+  });
+
+  it('cancelRound：rollingPrizes → idle，不写记录', () => {
+    s().advanceRound();
+    expect(s().cancelRound()).toEqual(OK);
+    expect(s().currentRound).toMatchObject({ phase: 'idle', drawMode: 'image-only', resultImageIds: [], resultNameIds: [] });
+    expect(s().winners).toEqual([]);
+    expect(s().roundCounter).toBe(0);
+  });
+
+  it('记录的 roundId 唯一数 = roundCounter（迁移按此重建计数）', () => {
+    s().advanceRound();
+    s().advanceRound();
+    expect(new Set(s().winners.map((w) => w.roundId)).size).toBe(s().roundCounter);
+  });
+});
+
+describe('抽奖模式：name-only', () => {
+  beforeEach(() => {
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'name-only', moduleCount: 3 });
+  });
+
+  it('idle → rollingNames → completed，记录有名字、无图片', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().currentRound).toMatchObject({ phase: 'rollingNames', resultImageIds: [], resultNameIds: [] });
+    expect(s().viewMode).toBe('lottery');
+    expect(s().advanceRound()).toEqual(OK);
+
+    const done = s().currentRound!;
+    expect(done.phase).toBe('completed');
+    expect(done.resultNameIds).toHaveLength(3);
+    expect(done.resultImageIds).toEqual([]);
+    expect(s().roundCounter).toBe(1);
+    expect(s().winners).toEqual(done.resultNameIds.map((pid) => ({
+      ...s().participants.find((x) => x.id === pid)!,
+      prizeId: 'p1', roundId: done.id, roundNo: 1, wonAt: 1_700_000_000_000,
+    })));
+    s().winners.forEach((w) => {
+      expect(w.imageId).toBeUndefined();
+      expect(w.imageSerial).toBeUndefined();
+    });
+  });
+
+  it('不消耗图片：图片池与开始前一致；没有图片也能抽', () => {
+    s().advanceRound();
+    s().advanceRound();
+    expect(resolveImagePool(s().prizeImages, s().winners, null)).toHaveLength(20);
+    resetStore({ prizeImages: [] });
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'name-only', moduleCount: 3 });
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().winners).toHaveLength(3);
+  });
+
+  it('名字不足时开始失败；图片池为空不影响', () => {
+    resetStore({ participants: range(2, (i) => person(i)) });
+    s().selectPrize('p1');
+    s().setRoundConfig({ drawMode: 'name-only', moduleCount: 3 });
+    expect(s().advanceRound()).toEqual(fail('可参与名字不足：需要 3 人，当前可选 2 人'));
+    expect(s().currentRound!.phase).toBe('idle');
+    expect(s().viewMode).toBe('welcome');
+  });
+
+  it('滚动中名字被删到不足时停止失败，停在 rollingNames', () => {
+    s().advanceRound();
+    useLotteryStore.setState({ participants: s().participants.slice(0, 2) });
+    expect(s().advanceRound().ok).toBe(false);
+    expect(s().currentRound!.phase).toBe('rollingNames');
+    expect(s().winners).toEqual([]);
+  });
+
+  it('startPrizeRoll / stopPrizeRoll 在该模式下失败', () => {
+    expect(s().startPrizeRoll().ok).toBe(false);
+    expect(s().currentRound!.phase).toBe('idle');
+    s().advanceRound();
+    expect(s().stopPrizeRoll()).toEqual(fail(PHASE_ERROR));
+  });
+
+  it('cancelRound：rollingNames → idle（无奖品阶段可退），不写记录', () => {
+    s().advanceRound();
+    expect(s().cancelRound()).toEqual(OK);
+    expect(s().currentRound).toMatchObject({ phase: 'idle', drawMode: 'name-only', resultImageIds: [], resultNameIds: [] });
+    expect(s().winners).toEqual([]);
+    expect(s().roundCounter).toBe(0);
+  });
+
+  it('名字不重复：连续两轮 name-only 抽到的人互不相同', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    s().advanceRound();
+    s().advanceRound();
+    const first = s().currentRound!.resultNameIds;
+    s().nextRound();
+    s().setRoundConfig({ drawMode: 'name-only' });
+    s().advanceRound();
+    s().advanceRound();
+    const second = s().currentRound!.resultNameIds;
+    expect(second.filter((id) => first.includes(id))).toEqual([]);
+  });
+});
+
+describe('抽奖模式：image-then-name 不变 + 取消', () => {
+  it('rollingNames 取消仍回到 prizesRevealed 并保留奖品（默认模式）', () => {
+    s().selectPrize('p1');
+    s().setRoundConfig({ moduleCount: 3 });
+    s().advanceRound();
+    s().advanceRound();
+    const images = s().currentRound!.resultImageIds;
+    s().advanceRound();
+    expect(s().cancelRound()).toEqual(OK);
+    expect(s().currentRound).toMatchObject({ phase: 'prizesRevealed', drawMode: 'image-then-name', resultImageIds: images });
+    expect(s().winners).toEqual([]);
+  });
+
+  it('默认模式下从 idle 开始仍是抽奖品，startNameRoll 要求奖品已定格', () => {
+    s().selectPrize('p1');
+    expect(s().startNameRoll().ok).toBe(false);
+    expect(s().advanceRound()).toEqual(OK);
+    expect(s().currentRound!.phase).toBe('rollingPrizes');
+  });
+});

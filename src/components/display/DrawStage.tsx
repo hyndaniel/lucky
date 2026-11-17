@@ -37,6 +37,7 @@ interface ModuleView {
   name: string | null;
   label: string | null;
   dept: string | null;
+  showImage: boolean;           // name-only 时为 false：不渲染图片区
 }
 
 // 池不足 count 时循环补足；池为空返回 []（模块显示空白 "?"）
@@ -65,11 +66,13 @@ export default function DrawStage() {
   const moduleCount = !prize || exhausted ? 0 : round ? round.moduleCount : Math.min(DEFAULT_MODULE_COUNT, remaining);
 
   // 滚动用的池按「本轮之前」的中奖记录计算：名字定格后的减速期间仍用同一批池
+  // 只抽名字时不用图片池，只抽图片时不用名字池
+  const drawMode = round?.drawMode ?? 'image-then-name';
   const { imagePool, namePool, roundWinners } = useMemo(() => {
     const prior = winners.filter((w) => w.roundId !== roundId);
     return {
-      imagePool: round ? resolveImagePool(prizeImages, prior, round.imagePoolIds) : [],
-      namePool: round && prize ? resolveNamePool(participants, prior, prize.id, round.namePoolIds) : [],
+      imagePool: round && round.drawMode !== 'name-only' ? resolveImagePool(prizeImages, prior, round.imagePoolIds) : [],
+      namePool: round && prize && round.drawMode !== 'image-only' ? resolveNamePool(participants, prior, prize.id, round.namePoolIds) : [],
       roundWinners: winners.filter((w) => w.roundId === roundId),
     };
   }, [winners, roundId, round, prize, prizeImages, participants]);
@@ -88,7 +91,9 @@ export default function DrawStage() {
   const settlingKind: RollKind | null =
     phase === 'prizesRevealed' && lastRollKey === `${roundId}:image` ? 'image'
       : phase === 'completed' && lastRollKey === `${roundId}:name` ? 'name'
-        : null;
+        // image-only：奖品滚动直接进入 completed，减速期间继续滚图片
+        : phase === 'completed' && lastRollKey === `${roundId}:image` ? 'image'
+          : null;
   const tickerKind = liveKind ?? settlingKind;
   const rollKey = tickerKind ? `${roundId}:${tickerKind}` : null;
   const rollItems = tickerKind === 'image' ? imagePool.map((img) => img.id)
@@ -157,21 +162,28 @@ export default function DrawStage() {
   });
 
   const viewFor = (i: number): ModuleView => {
+    // 模式只改变模块里显示什么：name-only 不要图片区，image-only 不显示名字 / 部门
+    const showImage = drawMode !== 'name-only';
+    const imageOnly = drawMode === 'image-only';
     if (!round || phase === 'idle') {
-      return { state: 'blank', rollingPart: 'image', imageId: null, name: null, label: null, dept: null };
+      return { state: 'blank', rollingPart: 'image', imageId: null, name: null, label: null, dept: null, showImage };
     }
     if (rollingKind === 'image') {
       const imageId = rollingItems[i] ?? null;
-      return { state: 'rolling', rollingPart: 'image', imageId, name: null, label: imageId ? imageById.get(imageId)?.label ?? null : null, dept: null };
+      return { state: 'rolling', rollingPart: 'image', imageId, name: null, label: imageId ? imageById.get(imageId)?.label ?? null : null, dept: null, showImage };
     }
-    // 奖品已定格：图片固定为本轮结果
+    // 奖品已定格：图片固定为本轮结果（name-only 没有图片结果）
     const imageId = resultImageIds[i] ?? null;
     const winner = phase === 'completed' ? roundWinners[i] : undefined;
     const label = (imageId ? imageById.get(imageId)?.label : undefined) ?? winner?.imageLabel ?? null;
     if (rollingKind === 'name') {
-      return { state: 'rolling', rollingPart: 'name', imageId, name: rollingItems[i] ?? null, label, dept: null };
+      return { state: 'rolling', rollingPart: 'name', imageId, name: rollingItems[i] ?? null, label, dept: null, showImage };
     }
-    return { state: 'revealed', rollingPart: 'name', imageId, name: winner?.name ?? null, label, dept: winner?.dept ?? null };
+    return {
+      state: 'revealed', rollingPart: 'name', imageId, label, showImage,
+      name: imageOnly ? null : winner?.name ?? null,
+      dept: imageOnly ? null : winner?.dept ?? null,
+    };
   };
 
   // 统一字号：对整个候选池（全部名字 / 全部图片说明 / 全部部门）测算一次，而不是只看当前帧，
@@ -301,6 +313,7 @@ export default function DrawStage() {
                         fontFamily={settings.fontFamily}
                         dept={view.dept}
                         showDept={showDept}
+                        showImage={view.showImage}
                         nameFontSize={nameFontSize}
                         labelFontSize={labelFontSize}
                         deptFontSize={deptFontSize}

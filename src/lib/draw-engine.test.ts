@@ -303,6 +303,51 @@ describe('validateNameRollStart', () => {
     expect(validateNameRollStart({ ...base(), prize: undefined })).toBe('请先选择奖项');
   });
 });
+describe('按抽奖模式的开始校验', () => {
+  const mode = (drawMode: CurrentRound['drawMode'], extra: Partial<CurrentRound> = {}) => round({ moduleCount: 3, drawMode, ...extra });
+  const base = (drawMode: CurrentRound['drawMode']) => ({
+    prize, winners: [] as Winner[], prizeImages: images(5), participants: people(5), round: mode(drawMode),
+  });
+
+  it('image-only：只校验图片池，名字不足不影响', () => {
+    expect(validatePrizeRollStart({ ...base('image-only'), participants: [] })).toBeNull();
+    expect(validatePrizeRollStart({ ...base('image-only'), prizeImages: images(2) }))
+      .toBe('可用奖品图片不足：需要 3 张，当前可选 2 张');
+  });
+
+  it('name-only：只校验名字池，没有图片也可以开始', () => {
+    expect(validatePrizeRollStart({ ...base('name-only'), prizeImages: [] })).toBeNull();
+    expect(validatePrizeRollStart({ ...base('name-only'), participants: people(2) }))
+      .toBe('可参与名字不足：需要 3 人，当前可选 2 人');
+  });
+
+  it('各模式仍先做奖项 / 名额 / 模块数的公共校验', () => {
+    for (const m of ['image-only', 'name-only'] as const) {
+      expect(validatePrizeRollStart({ ...base(m), prize: undefined })).toBe(NO_PRIZE_ERROR);
+      expect(validatePrizeRollStart({ ...base(m), round: mode(m, { moduleCount: 0 }) })).toBe('模块数需在 1–60 之间');
+      expect(validatePrizeRollStart({ ...base(m), round: mode(m, { moduleCount: 7 }) }))
+        .toBe('本轮模块数（7）超过「一等奖」剩余名额（6）');
+    }
+  });
+
+  it('image-then-name 仍同时校验两个池', () => {
+    expect(validatePrizeRollStart({ ...base('image-then-name'), participants: people(2) }))
+      .toBe('可参与名字不足：需要 3 人，当前可选 2 人');
+    expect(validatePrizeRollStart({ ...base('image-then-name'), prizeImages: images(2) }))
+      .toBe('可用奖品图片不足：需要 3 张，当前可选 2 张');
+  });
+
+  it('validateNameRollStart：name-only 在 idle 即可开始，其它阶段拒绝；image-only 不抽名字', () => {
+    expect(validateNameRollStart({ ...base('name-only'), prizeImages: [] })).toBeNull();
+    expect(validateNameRollStart({ ...base('name-only'), round: mode('name-only', { phase: 'rollingNames' }) }))
+      .toBe('当前阶段不能开始抽名字');
+    expect(validateNameRollStart({ ...base('name-only'), participants: people(2) }))
+      .toBe('可参与名字不足：需要 3 人，当前可选 2 人');
+    expect(validateNameRollStart({ ...base('image-only'), round: mode('image-only', { phase: 'prizesRevealed' }) }))
+      .toBe('当前模式不抽名字');
+  });
+});
+
 describe('停止时的池检查（imagePoolShortage / namePoolShortage）', () => {
   const base = () => ({
     prize, winners: [] as Winner[], prizeImages: images(5), participants: people(5), round: round({ moduleCount: 3 }),
