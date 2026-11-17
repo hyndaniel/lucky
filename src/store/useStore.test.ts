@@ -4,7 +4,8 @@ import { DEFAULT_EFFECTS, DEFAULT_MODULE_STYLE, DEFAULT_SOUND, INITIAL_PRIZES } 
 import { resolveImagePool, resolveNamePool } from '@/lib/draw-engine';
 import { DEFAULT_PARTICIPANTS } from '@/assets/default-participants';
 import hermesLogo from '@/assets/hermes-logo.jpg';
-import { normalizeSettings, useLotteryStore } from '@/store/useStore';
+import { normalizeSettings, useLotteryStore, writeStorageSafely } from '@/store/useStore';
+import { toast } from 'sonner';
 
 type StoreState = ReturnType<typeof useLotteryStore.getState>;
 
@@ -896,5 +897,39 @@ describe('persist migrate（v7 → v8）', () => {
     expect(s()).not.toHaveProperty('isRolling');
     expect(s().settings.moduleStyle).toEqual(DEFAULT_MODULE_STYLE);
     expect(typeof s().advanceRound).toBe('function');
+  });
+});
+
+describe('持久化写入失败（配额）', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('两次 setItem 都抛错时 writeStorageSafely 不抛出，返回 false 并提示', () => {
+    vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError'); });
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const toastError = vi.spyOn(toast, 'error').mockImplementation(() => 'id');
+    expect(writeStorageSafely('k', 'v')).toBe(false);
+    expect(errorLog).toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith('存储空间不足，请减小 Logo 或背景图', expect.anything());
+  });
+
+  it('配额失败时 set() 不抛出，内存状态保留', () => {
+    resetStore();
+    const setItem = vi.spyOn(localStorage, 'setItem').mockImplementation(() => { throw new Error('QuotaExceededError'); });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(toast, 'error').mockImplementation(() => 'id');
+    expect(() => s().setViewMode('lottery')).not.toThrow();
+    expect(s().viewMode).toBe('lottery');
+    expect(setItem).toHaveBeenCalled();
+  });
+
+  it('混淆写入失败但明文写入成功时返回 true', () => {
+    const real = localStorage.setItem.bind(localStorage);
+    let calls = 0;
+    vi.spyOn(localStorage, 'setItem').mockImplementation((k: string, v: string) => {
+      if (calls++ === 0) throw new Error('first fails');
+      real(k, v);
+    });
+    expect(writeStorageSafely('k2', 'plain')).toBe(true);
+    expect(localStorage.getItem('k2')).toBe('plain');
   });
 });

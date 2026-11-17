@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
+import { toast } from 'sonner';
 import type {
   ActionResult, CurrentRound, EffectSettings, ModuleStylePatch, Participant, Prize, PrizeImage, Settings,
   SoundSettings, Winner,
@@ -309,6 +310,26 @@ const deobfuscateData = (str: string): string => {
     return str;
   }
 };
+
+export const STORAGE_QUOTA_ERROR = '存储空间不足，请减小 Logo 或背景图';
+
+// 写入 localStorage：先写混淆串，失败再退回明文；两次都失败也不能抛出，
+// 否则会从 zustand 的 set() 里冒出去，让内存状态与持久化状态不一致
+export function writeStorageSafely(name: string, value: string): boolean {
+  try {
+    localStorage.setItem(name, obfuscateData(value));
+    return true;
+  } catch {
+    try {
+      localStorage.setItem(name, value);
+      return true;
+    } catch (error) {
+      console.error('[lucky-draw] 持久化失败：', error);
+      toast.error(STORAGE_QUOTA_ERROR, { id: 'storage-quota' });
+      return false;
+    }
+  }
+}
 
 export const useLotteryStore = create<LotteryState>()(
   persist(
@@ -634,13 +655,7 @@ export const useLotteryStore = create<LotteryState>()(
             return val;
           }
         },
-        setItem: (name, value) => {
-          try {
-            localStorage.setItem(name, obfuscateData(value));
-          } catch {
-            localStorage.setItem(name, value);
-          }
-        },
+        setItem: (name, value) => { writeStorageSafely(name, value); },
         removeItem: (name) => localStorage.removeItem(name),
       })),
     }

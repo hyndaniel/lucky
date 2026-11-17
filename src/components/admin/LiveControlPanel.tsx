@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Play, Plus, Square, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import {
 } from '@/lib/draw-engine';
 import { describeImagePool, describeNamePool, formatLayoutHint } from '@/lib/pool-summary';
 import { ADVANCE_LABELS } from '@/lib/phase-labels';
+import { isAdvanceTooSoon, isSpaceOwnedByControl } from '@/lib/advance-guard';
 import type { ActionResult, CurrentRound, Prize } from '@/lib/types';
 import { ImagePoolPicker } from '@/components/admin/ImagePoolPicker';
 import { NamePoolPicker } from '@/components/admin/NamePoolPicker';
@@ -34,13 +35,6 @@ interface Props {
   onAddPrize: () => void;
 }
 
-// 焦点在输入控件或编辑区时，空格留给控件本身
-function isTypingTarget(target: EventTarget | null): boolean {
-  const el = target as HTMLElement | null;
-  if (!el?.tagName) return false;
-  return ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable;
-}
-
 const showFailure = (result: ActionResult) => {
   if (!result.ok) toast.error(result.reason);
 };
@@ -49,9 +43,10 @@ const showFailure = (result: ActionResult) => {
 export function LiveControlPanel({ controlledMode, onEditPrize, onDeletePrize, onAddPrize }: Props) {
   const {
     prizes, prizeImages, participants, winners, settings, currentPrizeId, currentRound, viewMode,
-    setViewMode, selectPrize, setRoundConfig, advanceRound, cancelRound,
+    setViewMode, selectPrize, setRoundConfig, cancelRound,
   } = useLotteryStore();
   const [picker, setPicker] = useState<'image' | 'name' | null>(null);
+  const lastAdvanceAt = useRef(0); // 上一次成功推进的时间；用 ref 避免重渲染
 
   const phase = currentRound?.phase ?? 'idle'; // round 为 null 时按 idle 处理
   const settled = phase === 'idle' || phase === 'completed';
@@ -78,19 +73,28 @@ export function LiveControlPanel({ controlledMode, onEditPrize, onDeletePrize, o
     return null;
   }, [round, currentPrize, winners, prizeImages, participants]);
 
-  // 空格键推进（全页面唯一的空格监听）。输入控件聚焦、对话框打开、长按重复时不触发
+  // 点击与空格共用的推进入口：距上次成功推进不足冷却时间则忽略，失败时 toast 原因且不更新时间戳
+  const tryAdvance = useCallback(() => {
+    const now = Date.now();
+    if (isAdvanceTooSoon(lastAdvanceAt.current, now)) return;
+    const result = useLotteryStore.getState().advanceRound();
+    if (result.ok) lastAdvanceAt.current = now;
+    else toast.error(result.reason);
+  }, []);
+
+  // 空格键推进（全页面唯一的空格监听）。输入控件/复选框/开关/标签页聚焦、对话框打开、长按重复时不触发
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
-      if (isTypingTarget(e.target) || document.querySelector('[role="dialog"]')) return;
+      if (isSpaceOwnedByControl(e.target) || document.querySelector('[role="dialog"]')) return;
       e.preventDefault();
       // 焦点在按钮上时，松开空格会再触发一次点击；先失焦避免重复推进
       if ((e.target as HTMLElement | null)?.tagName === 'BUTTON') (e.target as HTMLElement).blur();
-      showFailure(useLotteryStore.getState().advanceRound());
+      tryAdvance();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [tryAdvance]);
 
   const moduleCount = round?.moduleCount ?? DEFAULT_MODULE_COUNT;
   const layoutHint = formatLayoutHint(moduleCount, settings.moduleStyle.columns);
@@ -112,7 +116,6 @@ export function LiveControlPanel({ controlledMode, onEditPrize, onDeletePrize, o
                   key={mode}
                   variant={viewMode === mode ? 'default' : 'outline'}
                   onClick={() => setViewMode(mode)}
-                  disabled={!settled}
                   className={cn('w-24 h-24 flex flex-col gap-2 text-base', viewMode === mode && 'ring-2 ring-primary ring-offset-2')}
                 >
                   <span className="text-3xl">{icon}</span>
@@ -220,13 +223,13 @@ export function LiveControlPanel({ controlledMode, onEditPrize, onDeletePrize, o
               <Button
                 size="lg"
                 className={cn('h-20 text-2xl px-12 transition-all', rolling ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700')}
-                onClick={() => showFailure(advanceRound())}
+                onClick={tryAdvance}
               >
                 {rolling ? <Square className="w-6 h-6 mr-3 fill-current" /> : <Play className="w-6 h-6 mr-3 fill-current" />}
                 {ADVANCE_LABELS[phase]}
               </Button>
               {canCancel && (
-                <Button variant="outline" onClick={() => showFailure(cancelRound())}><Undo2 className="w-4 h-4 mr-1" /> 取消本轮</Button>
+                <Button variant="outline" onClick={() => { lastAdvanceAt.current = 0; showFailure(cancelRound()); }}><Undo2 className="w-4 h-4 mr-1" /> 取消本轮</Button>
               )}
             </div>
             {validationReason && <div className="text-sm text-red-500" data-testid="validation-reason">{validationReason}</div>}
