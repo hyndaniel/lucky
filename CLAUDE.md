@@ -27,18 +27,28 @@ pnpm test             # Run Vitest tests
 
 **State Management**: Zustand with localStorage persistence
 - Store: `src/store/useStore.ts`
-- Persistence key: `'lucky-draw-storage'`
+- Persistence key: `'lucky-draw-storage'` (version 8, `migrate` + `merge`/`normalizeSettings` fill missing fields)
 - Multi-window sync via polling (Display: 500ms, Admin: 1000ms)
+- Binary media (prize images, custom audio) lives in IndexedDB (`lucky-draw-media`, `src/lib/media-store.ts`), not localStorage; the store keeps only metadata. IndexedDB may be unavailable under `file://` in some browsers.
 
-**Core Business Logic**: `src/lib/lottery-logic.ts`
-- Weighted random selection algorithm
-- Must-win candidate prioritization
-- Banned list filtering
+**Two-phase draw** (prize images roll first, then names): the round state machine lives in the store (`currentRound.phase`: idle → rollingPrizes → prizesRevealed → rollingNames → completed; actions `advanceRound`/`cancelRound`/`nextRound` return `ActionResult`). The rules (pools, dedup, validation reasons, drawing) live in pure functions in `src/lib/draw-engine.ts`; the store only calls them. Spec: `docs/plans/2026-11-17-two-phase-draw-spec.md`.
+
+**Core Business Logic** (`src/lib/`):
+- `draw-engine.ts` - Image/name pools, dedup, `validatePrizeRollStart`, `drawImages`/`drawNames` (injectable rng)
+- `lottery-logic.ts` - Weighted random selection, must-win prioritization, banned list filtering (used by `drawNames`)
+- `grid-layout.ts` - `getGridColumns` / `computeModuleLayout` for the module grid
+- `media-store.ts` - IndexedDB blob store; `image-processing.ts` - image compression
+- `effects.ts` - Winner celebrations (confetti / stars / rockets / emoji); `sound.ts` - `soundEngine` singleton (audio must be unlocked by a click; sound plays only in the display window)
+- `name-import.ts`, `serial.ts`, `winner-records.ts`, `defaults.ts` (defaults, `FONT_PRESETS`)
 
 **Key Components**:
-- `src/pages/DisplayPage.tsx` - Main lottery display with real-time sync
-- `src/pages/AdminPage.tsx` - Control panel (prize/participant management)
-- `src/components/RollingBoard.tsx` - Lottery animation (welcome/rolling modes)
+- `src/pages/DisplayPage.tsx` - Display page with real-time sync
+- `src/pages/AdminPage.tsx` - Admin shell; assembles the tabs
+- `src/components/display/DrawStage.tsx` - Two-phase draw stage (module grid); `PrizeModule.tsx` is the single module card, shared by the display and the admin style preview
+- `src/components/admin/` - Admin tab components (`LiveControlPanel`, `ImagePoolTab`, `DisplayStyleTab`, `WinnersTab`, pickers)
+- `src/components/RollingBoard.tsx` - Welcome/prize pages animation
+
+**CSS trap**: `src/index.css` overrides some Tailwind classes under `.hermes-display-board` with `!important`; display-facing colors must use inline styles.
 
 **UI**: Shadcn/ui components in `src/components/ui/`
 

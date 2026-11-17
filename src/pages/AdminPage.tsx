@@ -29,6 +29,7 @@ import hermesLogo from "@/assets/hermes-logo.jpg";
 import { PHASE_LABELS } from "@/lib/phase-labels";
 import { ImagePoolTab } from "@/components/admin/ImagePoolTab";
 import { LiveControlPanel } from "@/components/admin/LiveControlPanel";
+import { DisplayStyleTab } from "@/components/admin/DisplayStyleTab";
 import { WinnersTab } from "@/components/admin/WinnersTab";
 import { FONT_PRESETS } from "@/lib/defaults";
 import { formatSerial } from "@/lib/serial";
@@ -430,6 +431,7 @@ export default function AdminPage() {
             <TabsTrigger value="participants">人员名单管理</TabsTrigger>
             <TabsTrigger value="import">批量导入</TabsTrigger>
             <TabsTrigger value="images">图片池</TabsTrigger>
+            <TabsTrigger value="display-style">大屏样式与特效</TabsTrigger>
             <TabsTrigger value="winners">中奖记录</TabsTrigger>
             <TabsTrigger value="settings">系统设置</TabsTrigger>
           </TabsList>
@@ -598,6 +600,11 @@ export default function AdminPage() {
             {/* Tab: 图片池 */}
             <TabsContent value="images" className="mt-0 p-4 overflow-auto">
               <ImagePoolTab />
+            </TabsContent>
+
+            {/* Tab: 大屏样式与特效 */}
+            <TabsContent value="display-style" className="mt-0 p-4 overflow-auto">
+              <DisplayStyleTab />
             </TabsContent>
 
             {/* Tab: 中奖记录 */}
