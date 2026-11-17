@@ -763,6 +763,13 @@ describe('normalizeSettings', () => {
     expect(out.effects).toEqual(DEFAULT_EFFECTS);
   });
 
+  it('丢弃旧版 scrollMode / winnersPerPage，不抛错', () => {
+    const out = normalizeSettings({ ...legacy, scrollMode: 'page', winnersPerPage: 12 });
+    expect(out).toMatchObject(legacy);
+    expect(out).not.toHaveProperty('scrollMode');
+    expect(out).not.toHaveProperty('winnersPerPage');
+  });
+
   it('输入为空或非对象时返回完整默认设置，不抛错', () => {
     for (const raw of [undefined, null, 'x', 42]) {
       const out = normalizeSettings(raw);

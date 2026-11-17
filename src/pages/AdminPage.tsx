@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLotteryStore } from "@/store/useStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Download, Upload, Trash,
@@ -24,6 +29,10 @@ import hermesLogo from "@/assets/hermes-logo.jpg";
 import { PHASE_LABELS } from "@/lib/phase-labels";
 import { ImagePoolTab } from "@/components/admin/ImagePoolTab";
 import { LiveControlPanel } from "@/components/admin/LiveControlPanel";
+import { WinnersTab } from "@/components/admin/WinnersTab";
+import { FONT_PRESETS } from "@/lib/defaults";
+import { formatSerial } from "@/lib/serial";
+import { decodeTextFile } from "@/lib/name-import";
 
 export default function AdminPage() {
   const [password, setPassword] = useState("");
@@ -33,7 +42,7 @@ export default function AdminPage() {
   });
   const {
     participants, winners, prizes, settings, currentRound,
-    importParticipants, fullReset, restoreDefaultPrizes, resetWinners,
+    importParticipants, fullReset, restoreDefaultPrizes,
     addPrize, updatePrize, removePrize, setSettings,
     addParticipant, updateParticipant, removeParticipant
   } = useLotteryStore();
@@ -41,6 +50,16 @@ export default function AdminPage() {
   const isRolling = phase === 'rollingPrizes' || phase === 'rollingNames';
 
   const [csvText, setCsvText] = useState("");
+  const [importMode, setImportMode] = useState<"replace" | "append">("append");
+  const [confirmFullReset, setConfirmFullReset] = useState(false);
+  // 有抽奖记录时覆盖导入不可用，强制追加
+  const effectiveImportMode = winners.length > 0 ? "append" : importMode;
+
+  // 参与者 id → 已中奖奖项名
+  const wonPrizeById = useMemo(() => {
+    const prizeNames = new Map(prizes.map(prize => [prize.id, prize.name]));
+    return new Map(winners.map(w => [w.id, prizeNames.get(w.prizeId) ?? '未知奖项']));
+  }, [winners, prizes]);
 
   // 兼容旧版本曾经保存过空奖项列表的浏览器数据。
   useEffect(() => {
@@ -93,8 +112,6 @@ export default function AdminPage() {
     backgroundImage: settings.backgroundImage || '',
     fontFamily: settings.fontFamily || "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     showDept: settings.showDept || false,
-    scrollMode: settings.scrollMode || 'none',
-    winnersPerPage: settings.winnersPerPage || 24,
   });
 
   // 当 settings 变化时同步到表单（首次加载或外部变化）
@@ -109,10 +126,8 @@ export default function AdminPage() {
       backgroundImage: settings.backgroundImage || '',
       fontFamily: settings.fontFamily || "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       showDept: settings.showDept || false,
-      scrollMode: settings.scrollMode || 'none',
-      winnersPerPage: settings.winnersPerPage || 24,
     });
-  }, [settings.title, settings.welcomeTitle, settings.welcomeSubtitle, settings.prizePageTitle, settings.password, settings.logo, settings.backgroundImage, settings.fontFamily, settings.showDept, settings.scrollMode, settings.winnersPerPage]);
+  }, [settings.title, settings.welcomeTitle, settings.welcomeSubtitle, settings.prizePageTitle, settings.password, settings.logo, settings.backgroundImage, settings.fontFamily, settings.showDept]);
 
   // Search
   const [searchTerm, setSearchTerm] = useState("");
@@ -204,13 +219,25 @@ export default function AdminPage() {
       toast.error("请粘贴数据后再点击执行导入");
       return;
     }
-    const res = importParticipants(csvText, controlledModeUnlocked);
+    const res = importParticipants(csvText, controlledModeUnlocked, effectiveImportMode);
     if (res.success) {
-      toast.success(`成功导入 ${res.count} 人`);
+      toast.success(`成功导入 ${res.count} 人${res.duplicateNames > 0 ? `（其中 ${res.duplicateNames} 个重名，已按不同人处理）` : ""}`);
       setCsvText("");
     } else {
       toast.error(res.error);
     }
+  };
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target;
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      setCsvText(decodeTextFile(await file.arrayBuffer()));
+    } catch {
+      toast.error("文件读取失败");
+    }
+    input.value = "";  // 允许再次选择同一文件
   };
 
   const handleDownloadTemplate = () => {
@@ -222,122 +249,6 @@ export default function AdminPage() {
     link.download = 'import_template.csv';
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 0);
-  };
-
-  const handleExportWinnersImage = () => {
-    if (winners.length === 0) {
-      toast.error("暂无中奖记录");
-      return;
-    }
-
-    const prizeNameMap = new Map(prizes.map(p => [p.id, p.name]));
-    const sortedWinners = [...winners].sort((a, b) => a.wonAt - b.wonAt);
-    const maxRows = 60;
-    const truncated = sortedWinners.length > maxRows;
-    const rows = sortedWinners.slice(0, maxRows);
-
-    const width = 1080;
-    const rowHeight = 48;
-    const headerHeight = 260;
-    const footerHeight = 80;
-    const tableHeaderHeight = 56;
-    const extraNoteHeight = truncated ? 32 : 0;
-    const height = Math.min(4000, headerHeight + tableHeaderHeight + rows.length * rowHeight + extraNoteHeight + footerHeight);
-
-    const canvas = document.createElement("canvas");
-    const scale = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = width * scale;
-    canvas.height = height * scale;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.scale(scale, scale);
-
-    const gradient = ctx.createLinearGradient(0, 0, 0, height);
-    gradient.addColorStop(0, "#0b0b0f");
-    gradient.addColorStop(1, "#1a0f0a");
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, width, height);
-
-    ctx.fillStyle = "rgba(255, 215, 0, 0.08)";
-    for (let i = 0; i < 80; i++) {
-      const x = (i * 137) % width;
-      const y = (i * 83) % height;
-      ctx.beginPath();
-      ctx.arc(x, y, 2, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    ctx.fillStyle = "#f5d76e";
-    ctx.font = "700 44px system-ui, -apple-system, Segoe UI, sans-serif";
-    ctx.textAlign = "left";
-    ctx.fillText(settings.title || "Lucky Draw", 64, 88);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "700 56px system-ui, -apple-system, Segoe UI, sans-serif";
-    ctx.fillText("中奖记录", 64, 150);
-
-    ctx.fillStyle = "rgba(255,255,255,0.7)";
-    ctx.font = "16px system-ui, -apple-system, Segoe UI, sans-serif";
-    const nowText = new Date().toLocaleString();
-    ctx.fillText(`导出时间：${nowText}`, 64, 190);
-    ctx.fillText(`记录总数：${winners.length}`, 64, 216);
-
-    const tableTop = headerHeight;
-    ctx.fillStyle = "rgba(255, 215, 0, 0.12)";
-    ctx.fillRect(48, tableTop, width - 96, tableHeaderHeight);
-
-    ctx.fillStyle = "#f5d76e";
-    ctx.font = "600 18px system-ui, -apple-system, Segoe UI, sans-serif";
-    const colXs = {
-      idx: 72,
-      name: 150,
-      dept: 360,
-      prize: 640,
-      time: 820,
-    };
-    ctx.fillText("序号", colXs.idx, tableTop + 34);
-    ctx.fillText("姓名", colXs.name, tableTop + 34);
-    ctx.fillText("部门", colXs.dept, tableTop + 34);
-    ctx.fillText("奖项", colXs.prize, tableTop + 34);
-    ctx.fillText("时间", colXs.time, tableTop + 34);
-
-    ctx.font = "16px system-ui, -apple-system, Segoe UI, sans-serif";
-    rows.forEach((w, i) => {
-      const y = tableTop + tableHeaderHeight + i * rowHeight;
-      ctx.fillStyle = i % 2 === 0 ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.02)";
-      ctx.fillRect(48, y, width - 96, rowHeight);
-
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(String(i + 1), colXs.idx, y + 30);
-      ctx.fillText(w.name, colXs.name, y + 30);
-      ctx.fillStyle = "rgba(255,255,255,0.8)";
-      ctx.fillText(w.dept || "-", colXs.dept, y + 30);
-      ctx.fillStyle = "#f5d76e";
-      ctx.fillText(prizeNameMap.get(w.prizeId) || "-", colXs.prize, y + 30);
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText(new Date(w.wonAt).toLocaleString(), colXs.time, y + 30);
-    });
-
-    let footerTop = tableTop + tableHeaderHeight + rows.length * rowHeight;
-    if (truncated) {
-      ctx.fillStyle = "rgba(255,255,255,0.6)";
-      ctx.fillText(`仅导出前 ${maxRows} 条记录`, 64, footerTop + 22);
-      footerTop += extraNoteHeight;
-    }
-
-    ctx.strokeStyle = "rgba(255,215,0,0.25)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(48, tableTop, width - 96, footerTop - tableTop);
-
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `winners-${new Date().toISOString().slice(0, 10)}.png`;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    });
   };
 
   const openAddDialog = () => {
@@ -469,7 +380,7 @@ export default function AdminPage() {
   }
 
   const filteredParticipants = participants.filter(p =>
-    p.name.includes(searchTerm) || p.dept.includes(searchTerm)
+    p.name.includes(searchTerm) || p.dept.includes(searchTerm) || formatSerial('N', p.serial).toLowerCase().includes(searchTerm.trim().toLowerCase())
   );
 
   return (
@@ -529,7 +440,7 @@ export default function AdminPage() {
                     <div className="flex gap-2 items-center flex-1">
                         <div className="relative w-full max-w-sm">
                             <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input placeholder="搜索姓名或部门..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+                            <Input placeholder="搜索姓名、部门或编号..." className="pl-8" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                         </div>
                         <Button onClick={openAddDialog}><Plus className="w-4 h-4 mr-2"/>添加人员</Button>
                     </div>
@@ -556,8 +467,10 @@ export default function AdminPage() {
                     <Table>
                         <TableHeader className="bg-muted/50 sticky top-0 z-10">
                             <TableRow>
+                                <TableHead>编号</TableHead>
                                 <TableHead>姓名</TableHead>
                                 <TableHead>部门</TableHead>
+                                <TableHead>状态</TableHead>
                                 {controlledModeUnlocked && (
                                   <>
                                     <TableHead className="text-center w-[120px]">必中设置</TableHead>
@@ -571,7 +484,7 @@ export default function AdminPage() {
                         <TableBody>
                             {filteredParticipants.length === 0 ? (
                                 <TableRow>
-                                    <TableCell colSpan={controlledModeUnlocked ? 6 : 3} className="text-center py-8 text-muted-foreground">
+                                    <TableCell colSpan={controlledModeUnlocked ? 8 : 5} className="text-center py-8 text-muted-foreground">
                                         无匹配数据，请先导入或添加人员
                                     </TableCell>
                                 </TableRow>
@@ -580,8 +493,14 @@ export default function AdminPage() {
                                     const prizeName = prizes.find(prize => prize.id === p.mustWinPrizeId)?.name;
                                     return (
                                         <TableRow key={p.id}>
+                                            <TableCell className="font-mono text-xs text-muted-foreground">{formatSerial('N', p.serial)}</TableCell>
                                             <TableCell className="font-medium">{p.name}</TableCell>
                                             <TableCell>{p.dept}</TableCell>
+                                            <TableCell>
+                                                {wonPrizeById.has(p.id)
+                                                  ? <Badge variant="secondary">已中奖 · {wonPrizeById.get(p.id)}</Badge>
+                                                  : <span className="text-muted-foreground">可抽</span>}
+                                            </TableCell>
                                             {controlledModeUnlocked && (
                                               <>
                                                 <TableCell className="text-center">
@@ -616,17 +535,44 @@ export default function AdminPage() {
             {/* Tab: 批量导入 */}
             <TabsContent value="import" className="mt-0 p-4 space-y-4">
                <div className="flex gap-4 items-start">
-                 <div className="flex-1 space-y-2">
-                    <Label>粘贴 CSV 数据</Label>
+                 <div className="flex-1 space-y-3">
+                    <Label>粘贴名单或选择文件</Label>
+                    <p className="text-xs text-muted-foreground">支持：每行一个姓名；或 姓名,部门；或带表头的 CSV；也可直接从 Excel 复制粘贴（.xlsx 请先另存为 CSV）</p>
+                    <div className="flex items-center gap-3">
+                      <Button variant="outline" size="sm" asChild>
+                        <label className="cursor-pointer">
+                          <Upload className="w-4 h-4 mr-2"/> 选择文件
+                          <input type="file" accept=".csv,.txt,.tsv" className="hidden" onChange={handleImportFile} />
+                        </label>
+                      </Button>
+                      <span className="text-xs text-muted-foreground">.csv / .txt / .tsv，读取后可继续编辑</span>
+                    </div>
                     <Textarea
                       placeholder={controlledModeUnlocked
-                        ? "姓名,部门,必中奖项(奖项名称),禁止中奖(是/否),权重(1-10)..."
+                        ? "姓名,部门,必中奖项(奖项名称),禁止奖项,权重(1-10)..."
                         : "姓名,部门..."
                       }
                       value={csvText}
                       onChange={e => setCsvText(e.target.value)}
                       className="font-mono text-xs min-h-[300px]"
                     />
+                    <RadioGroup
+                      value={effectiveImportMode}
+                      onValueChange={value => setImportMode(value as "replace" | "append")}
+                      className="flex gap-6"
+                    >
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="replace" id="import-mode-replace" disabled={winners.length > 0} />
+                        <Label htmlFor="import-mode-replace" className={winners.length > 0 ? "text-muted-foreground" : ""}>覆盖现有名单</Label>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem value="append" id="import-mode-append" />
+                        <Label htmlFor="import-mode-append">追加到现有名单</Label>
+                      </div>
+                    </RadioGroup>
+                    {winners.length > 0 && (
+                      <p className="text-xs text-muted-foreground">已有抽奖记录，只能追加导入；如需覆盖请先在“中奖记录”中重置清零。</p>
+                    )}
                     <div className="flex gap-2">
                       <Button onClick={handleImport}><Upload className="w-4 h-4 mr-2"/> 执行导入</Button>
                       {controlledModeUnlocked && (
@@ -641,7 +587,7 @@ export default function AdminPage() {
                         <div>已中奖: {winners.length}</div>
                         <div>剩余: {participants.length - winners.length}</div>
                     </div>
-                    <Button variant="destructive" className="w-full" onClick={() => { if(confirm("确定要清空所有人员数据吗？不可恢复！")) fullReset(); }}>
+                    <Button variant="destructive" className="w-full" onClick={() => setConfirmFullReset(true)}>
                       <Trash className="w-4 h-4 mr-2"/> 清空数据库
                     </Button>
                  </div>
@@ -655,26 +601,7 @@ export default function AdminPage() {
 
             {/* Tab: 中奖记录 */}
             <TabsContent value="winners" className="mt-0 p-4 overflow-auto">
-               <div className="flex justify-between mb-4">
-                 <h3 className="font-bold text-lg">历史中奖记录</h3>
-                 <div className="flex gap-2">
-                   <Button variant="outline" size="sm" onClick={handleExportWinnersImage}>导出图片</Button>
-                   <Button variant="outline" size="sm" onClick={() => { if(confirm("清空历史记录？")) resetWinners(); }}>重置记录</Button>
-                 </div>
-               </div>
-               <Table>
-                 <TableHeader><TableRow><TableHead>姓名</TableHead><TableHead>部门</TableHead><TableHead>奖项</TableHead><TableHead>时间</TableHead></TableRow></TableHeader>
-                 <TableBody>
-                   {winners.map(w => (
-                     <TableRow key={w.id}>
-                       <TableCell className="font-medium">{w.name}</TableCell>
-                       <TableCell>{w.dept}</TableCell>
-                       <TableCell><Badge variant="outline">{prizes.find(p=>p.id===w.prizeId)?.name}</Badge></TableCell>
-                       <TableCell className="font-mono text-muted-foreground">{new Date(w.wonAt).toLocaleTimeString()}</TableCell>
-                     </TableRow>
-                   ))}
-                 </TableBody>
-               </Table>
+              <WinnersTab />
             </TabsContent>
 
             {/* Tab: 设置 */}
@@ -701,10 +628,9 @@ export default function AdminPage() {
                      <SelectValue placeholder="选择展示字体" />
                    </SelectTrigger>
                    <SelectContent>
-                     <SelectItem value="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">系统无衬线（推荐）</SelectItem>
-                     <SelectItem value="'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif">微软雅黑 / 苹方</SelectItem>
-                     <SelectItem value="'Noto Serif SC', 'Songti SC', SimSun, serif">宋体风格</SelectItem>
-                     <SelectItem value="KaiTi, STKaiti, serif">楷体风格</SelectItem>
+                     {FONT_PRESETS.map(font => (
+                       <SelectItem key={font.value} value={font.value}>{font.label}</SelectItem>
+                     ))}
                    </SelectContent>
                  </Select>
                  <p className="text-xs text-muted-foreground">仅影响大屏端；会优先使用设备中已安装的对应字体。</p>
@@ -763,44 +689,6 @@ export default function AdminPage() {
                  <Label>奖项页标题</Label>
                  <Input value={settingsForm.prizePageTitle} onChange={e => setSettingsForm({...settingsForm, prizePageTitle: e.target.value})} />
                </div>
-                <div className="space-y-4 border p-4 rounded-xl bg-muted/20">
-                  <div className="space-y-2">
-                    <Label>大屏多中奖者展示模式</Label>
-                    <p className="text-xs text-muted-foreground">当单轮抽取的获奖人数较多溢出屏幕时的呈现方式。</p>
-                    <Select 
-                      value={settingsForm.scrollMode} 
-                      onValueChange={value => setSettingsForm({...settingsForm, scrollMode: value as any})}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="选择展示模式" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">常规平铺布局 (溢出时支持鼠标滚动)</SelectItem>
-                        <SelectItem value="scroll">谢幕式自动滚动 (平缓匀速，自动循环)</SelectItem>
-                        <SelectItem value="page">演示翻页模式 (支持键盘/翻页笔手动切页)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {settingsForm.scrollMode === 'page' && (
-                    <div className="space-y-2 pt-3 border-t border-dashed">
-                      <Label>每页最多显示人数</Label>
-                      <Select 
-                        value={String(settingsForm.winnersPerPage)} 
-                        onValueChange={value => setSettingsForm({...settingsForm, winnersPerPage: parseInt(value, 10)})}
-                      >
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="选择每页显示人数" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="12">每页 12 人 (推荐，字号超大清晰)</SelectItem>
-                          <SelectItem value="24">每页 24 人 (标准网格布局)</SelectItem>
-                          <SelectItem value="36">每页 36 人 (较紧凑布局)</SelectItem>
-                          <SelectItem value="48">每页 48 人 (多人数大屏展现)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                </div>
                <div className="flex items-center justify-between border p-3 rounded-lg bg-muted/20">
                  <div className="space-y-0.5">
                    <Label>显示部门名称</Label>
@@ -825,6 +713,19 @@ export default function AdminPage() {
           </div>
         </Tabs>
       </main>
+
+      <AlertDialog open={confirmFullReset} onOpenChange={setConfirmFullReset}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>清空数据库</AlertDialogTitle>
+            <AlertDialogDescription>确定要清空所有人员数据吗？不可恢复！</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { fullReset(); toast.success("已清空数据库"); }}>确定</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Edit/Add Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

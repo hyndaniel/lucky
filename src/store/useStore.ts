@@ -56,8 +56,6 @@ const DEFAULT_SETTINGS: Settings = {
   prizePageTitle: '奖项',
   logo: hermesLogo,
   showDept: false,
-  scrollMode: 'none',
-  winnersPerPage: 24,
   backgroundImage: '',
   fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   moduleStyle: DEFAULT_MODULE_STYLE,
