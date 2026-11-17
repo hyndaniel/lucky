@@ -4,6 +4,9 @@ import { useLotteryStore } from "@/store/useStore";
 import hermesLogo from "@/assets/hermes-logo.jpg";
 import { Maximize2, Settings } from "lucide-react";
 import DrawStage from "@/components/display/DrawStage";
+import PageDecorImage from "@/components/display/PageDecorImage";
+import { useCustomFonts } from "@/hooks/useCustomFonts";
+import { textBlockStyle, verticalJustify } from "@/lib/page-layout-style";
 
 export default function RollingBoard() {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -11,6 +14,9 @@ export default function RollingBoard() {
   const { prizes, settings, viewMode } = useLotteryStore();
   // 未上传背景图时使用主题的暖白背景；上传后直接使用用户配置的图片。
   const backgroundImage = settings.backgroundImage || '';
+  // 注册已上传字体，让大屏能用页面排版 / 模块样式里选的自定义 family
+  useCustomFonts(settings.fonts);
+  const { welcomeLayout, prizeLayout } = settings;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -61,10 +67,11 @@ export default function RollingBoard() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.04 }}
               transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-              className="flex flex-col items-center justify-center text-center p-8 relative"
+              className="relative flex h-full w-full flex-col items-center p-8"
+              style={{ justifyContent: verticalJustify(welcomeLayout.verticalAlign) }}
             >
               {/* Golden circular backdrop glow */}
-              <div className="absolute w-[500px] h-[500px] bg-gradient-to-tr from-yellow-500/10 to-transparent blur-[120px] rounded-full pointer-events-none -z-10" />
+              <div className="absolute left-1/2 top-1/2 -z-10 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-tr from-yellow-500/10 to-transparent blur-[120px] pointer-events-none" />
 
               {(settings.logo || hermesLogo) && (
                 <motion.div
@@ -81,24 +88,32 @@ export default function RollingBoard() {
                   />
                 </motion.div>
               )}
-              
+
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4 }}
-                className="relative"
+                className="relative w-full"
               >
-                <h2 className="text-yellow-500/90 text-2xl md:text-4xl font-cinzel tracking-[0.4em] uppercase mb-4 drop-shadow-[0_0_15px_rgba(234,179,8,0.25)] font-bold">
-                  BONDING
+                {/* 颜色 / 字号 / 字体 / 对齐一律 inline：.hermes-display-board 会用 !important 覆盖 Tailwind 颜色类 */}
+                <h2
+                  style={{ margin: '0 0 0.4em', fontWeight: 700, letterSpacing: '0.4em', ...textBlockStyle(welcomeLayout.subtitle) }}
+                >
+                  {settings.welcomeSubtitle || "BONDING"}
                 </h2>
-                
+
                 {/* Horizontal Divider Line */}
                 <div className="w-32 h-[1px] bg-gradient-to-r from-transparent via-yellow-500/60 to-transparent mx-auto my-6" />
 
-                <h1 className="text-6xl md:text-9xl font-black text-white font-cinzel tracking-wider drop-shadow-[0_0_40px_rgba(255,215,0,0.5)] leading-none select-none bg-gradient-to-b from-white via-white to-amber-200 bg-clip-text text-transparent py-2">
+                <h1
+                  className="select-none"
+                  style={{ margin: 0, fontWeight: 900, lineHeight: 1.1, padding: '0.1em 0', ...textBlockStyle(welcomeLayout.title) }}
+                >
                   {settings.welcomeTitle || "ANNUAL PARTY"}
                 </h1>
               </motion.div>
+
+              <PageDecorImage decor={welcomeLayout.decor} />
             </motion.div>
           )}
 
@@ -110,13 +125,16 @@ export default function RollingBoard() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.1 }}
               transition={{ duration: 0.8, ease: "easeOut" }}
-              className="w-full max-w-7xl px-8 flex flex-col items-center"
+              className="relative flex h-full w-full flex-col items-center px-8 py-8"
+              style={{ justifyContent: verticalJustify(prizeLayout.verticalAlign) }}
             >
+              <div className="flex w-full max-w-7xl flex-col items-center">
               <motion.h2
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2 }}
-                className="text-yellow-500 text-3xl md:text-5xl font-cinzel tracking-[0.3em] uppercase mb-12 drop-shadow-[0_0_20px_rgba(255,215,0,0.5)]"
+                className="mb-12 w-full"
+                style={{ margin: '0 0 3rem', fontWeight: 700, letterSpacing: '0.15em', ...textBlockStyle(prizeLayout.title) }}
               >
                 {settings.prizePageTitle || "今日奖项"}
               </motion.h2>
@@ -151,6 +169,8 @@ export default function RollingBoard() {
                   </motion.div>
                 ))}
               </div>
+              </div>
+              <PageDecorImage decor={prizeLayout.decor} />
             </motion.div>
           )}
 

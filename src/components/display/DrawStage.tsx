@@ -11,6 +11,8 @@ import { preloadImages, useMediaUrls } from '@/hooks/useMediaUrls';
 import { useRollingTicker } from '@/hooks/useRollingTicker';
 import { useStageFx } from '@/hooks/useStageFx';
 import PrizeModule, { type PrizeModuleState } from '@/components/display/PrizeModule';
+import PageDecorImage from '@/components/display/PageDecorImage';
+import { textBlockStyle } from '@/lib/page-layout-style';
 
 type RollKind = 'image' | 'name';
 
@@ -27,8 +29,6 @@ const NO_PRIZE_TEXT = '请在后台选择奖项';
 const GRID_GAP = 20;
 // 颜色一律 inline（index.css 在 .hermes-display-board 下用 !important 覆盖了若干 Tailwind 颜色类）
 const COLOR_ACCENT = '#d86632';
-const COLOR_PRIMARY = '#b94d24';
-const COLOR_MUTED = '#a66b52';
 
 interface ModuleView {
   state: PrizeModuleState;
@@ -224,37 +224,47 @@ export default function DrawStage() {
   const statusText = !prize ? null : exhausted ? EXHAUSTED_TEXT : PHASE_TEXT[shownPhase];
   const subtitle = round && prize && !exhausted ? `第 ${round.roundNo} 轮 · 本轮 ${round.moduleCount} 份` : null;
 
+  // 页面排版（标题 = 奖项名，副标题 = 顶部小标题与轮次行）；颜色 / 字号 / 字体 / 对齐一律 inline。
+  // 页头只改变自身在网格上方还是下方（order），不改变网格的尺寸计算：
+  // verticalAlign 为 bottom 时页头排在网格之后，top / center 排在网格之前。
+  const pageLayout = settings.lotteryLayout;
+  const titleCss = textBlockStyle(pageLayout.title);
+  const subtitleCss = textBlockStyle(pageLayout.subtitle);
+  const headerBelow = pageLayout.verticalAlign === 'bottom';
+
   return (
     // 底部与两侧至少留 72px：避开左下音频提示与右下全屏 / 后台按钮（距边 24px）
     <div
       style={{
-        width: '100%', height: '100%', boxSizing: 'border-box', padding: '4vh max(3vw, 72px) max(4vh, 72px)',
+        position: 'relative', width: '100%', height: '100%', boxSizing: 'border-box', padding: '4vh max(3vw, 72px) max(4vh, 72px)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2.5vh',
       }}
     >
-      <header style={{ flexShrink: 0, textAlign: 'center', maxWidth: '100%' }}>
+      <header style={{ flexShrink: 0, width: '100%', order: headerBelow ? 2 : 0 }}>
         {settings.title && (
-          <div style={{ color: COLOR_ACCENT, fontSize: 'clamp(16px, 2.2vh, 26px)', fontWeight: 600, letterSpacing: '0.3em' }}>
+          <div style={{ fontWeight: 600, letterSpacing: '0.3em', ...subtitleCss }}>
             {settings.title}
           </div>
         )}
-        <h1 style={{ margin: '0.15em 0 0', color: COLOR_PRIMARY, fontSize: 'clamp(40px, 7vh, 88px)', fontWeight: 900, lineHeight: 1.15 }}>
+        <h1 style={{ margin: '0.15em 0 0', fontWeight: 900, lineHeight: 1.15, ...titleCss }}>
           {prize ? prize.name : NO_PRIZE_TEXT}
         </h1>
         {subtitle && (
-          <div style={{ marginTop: '0.4em', color: COLOR_MUTED, fontSize: 'clamp(16px, 2.4vh, 28px)', letterSpacing: '0.08em' }}>
+          <div style={{ marginTop: '0.4em', letterSpacing: '0.08em', ...subtitleCss }}>
             {subtitle}
           </div>
         )}
         {statusText && (
-          <div
-            style={{
-              display: 'inline-block', marginTop: '0.8em', padding: '0.3em 1.2em', borderRadius: 999,
-              color: COLOR_ACCENT, background: 'rgba(216, 102, 50, 0.08)', boxShadow: '0 0 0 1px rgba(216, 102, 50, 0.25)',
-              fontSize: 'clamp(16px, 2.6vh, 30px)', fontWeight: 600, letterSpacing: '0.1em',
-            }}
-          >
-            {statusText}
+          <div style={{ marginTop: '0.8em', textAlign: pageLayout.subtitle.align }}>
+            <span
+              style={{
+                display: 'inline-block', padding: '0.3em 1.2em', borderRadius: 999,
+                color: COLOR_ACCENT, background: 'rgba(216, 102, 50, 0.08)', boxShadow: '0 0 0 1px rgba(216, 102, 50, 0.25)',
+                fontSize: 'clamp(16px, 2.6vh, 30px)', fontWeight: 600, letterSpacing: '0.1em',
+              }}
+            >
+              {statusText}
+            </span>
           </div>
         )}
       </header>
@@ -304,6 +314,8 @@ export default function DrawStage() {
           </div>
         )}
       </div>
+
+      <PageDecorImage decor={pageLayout.decor} />
     </div>
   );
 }
