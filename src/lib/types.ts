@@ -56,7 +56,7 @@ export interface ModuleStyle {
   showName: boolean;            // 图片下方显示名字
   nameStyle: TextStyle;
   labelStyle: TextStyle;
-  moduleScale: number;          // 40..100，自动适配尺寸的百分比
+  moduleScale: number;          // 40..200，自动适配尺寸的百分比
   columns: number;              // 0 = 自动；>0 固定每排数量
   backgroundColor: string;      // '#rrggbb'
   backgroundOpacity: number;    // 0..100

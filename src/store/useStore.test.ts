@@ -803,6 +803,18 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ fonts: 'x' }).fonts).toEqual([]);
   });
 
+  it('fonts 中的无效元素被丢弃，只保留 key / family / name 均为字符串的条目', () => {
+    const out = normalizeSettings({ fonts: [null, {}, 'x', { key: 'a', family: 'b' }, { key: 'a', family: 'b', name: 'c' }] });
+    expect(out.fonts).toEqual([{ key: 'a', family: 'b', name: 'c' }]);
+  });
+
+  it('保留旧版字体预设的取值，已保存的 fontFamily 仍能匹配下拉项', () => {
+    const values = FONT_PRESETS.map((f) => f.value);
+    expect(values).toContain("'Noto Serif SC', 'Songti SC', SimSun, serif");
+    expect(values).toContain('KaiTi, STKaiti, serif');
+    expect(values).toContain("'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif");
+  });
+
   it('默认排版不与默认对象共享引用（避免意外修改）', () => {
     const out = normalizeSettings({});
     expect(out.welcomeLayout).not.toBe(DEFAULT_WELCOME_LAYOUT);

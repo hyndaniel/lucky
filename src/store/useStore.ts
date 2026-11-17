@@ -87,6 +87,10 @@ function withDefaults<T extends object>(defaults: T, raw: unknown): T {
   return result;
 }
 
+const isUploadedFont = (value: unknown): value is UploadedFont => (
+  isRecord(value) && typeof value.key === 'string' && typeof value.family === 'string' && typeof value.name === 'string'
+);
+
 // 页面排版：title / subtitle / decor 各自按字段补默认值
 function normalizeLayout(defaults: PageLayout, raw: unknown): PageLayout {
   const layout = withDefaults(defaults, raw);
@@ -115,7 +119,7 @@ export function normalizeSettings(raw: unknown): Settings {
     welcomeLayout: normalizeLayout(DEFAULT_WELCOME_LAYOUT, source.welcomeLayout),
     prizeLayout: normalizeLayout(DEFAULT_PRIZE_LAYOUT, source.prizeLayout),
     lotteryLayout: normalizeLayout(DEFAULT_LOTTERY_LAYOUT, source.lotteryLayout),
-    fonts: Array.isArray(source.fonts) ? (source.fonts as UploadedFont[]) : [],
+    fonts: Array.isArray(source.fonts) ? source.fonts.filter(isUploadedFont) : [],
   };
 }
 interface LotteryData {
