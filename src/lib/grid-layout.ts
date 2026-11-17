@@ -11,6 +11,9 @@ export interface ModuleLayout {
   columns: number; rows: number; cellWidth: number; cellHeight: number;
   moduleSize: number;       // 方形图片区边长
   cardWidth: number; cardHeight: number; padding: number;
+  // 渲染网格时每个格子 / 每排的实际尺寸：scale <= 1 时 = cellWidth / cellHeight；
+  // scale > 1 时取 max(cell, card)，使行 / 列间距 ≥ 卡片尺寸，放大后的卡片互不重叠（整个网格居中并向四周溢出）
+  slotWidth: number; slotHeight: number;
   nameFontSize: number; labelFontSize: number; deptFontSize: number; textHeight: number;
 }
 
@@ -75,8 +78,12 @@ export function computeModuleLayout(input: ModuleLayoutInput): ModuleLayout {
   const cardWidthCapped = scale > 1 ? cardWidth : Math.min(cellWidth, cardWidth);
   const cardHeight = moduleSize + 2 * padding + textHeight;
 
+  const slotWidth = scale > 1 ? Math.max(cellWidth, cardWidthCapped) : cellWidth;
+  const slotHeight = scale > 1 ? Math.max(cellHeight, cardHeight) : cellHeight;
+
   return {
     columns, rows, cellWidth, cellHeight, moduleSize,
+    slotWidth, slotHeight,
     cardWidth: cardWidthCapped, cardHeight, padding, nameFontSize, labelFontSize, deptFontSize, textHeight,
   };
 }

@@ -277,7 +277,7 @@ export default function DrawStage() {
                     <div
                       key={i}
                       style={{
-                        width: layout.cellWidth, height: layout.cellHeight,
+                        width: layout.slotWidth, height: layout.slotHeight,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}
                     >

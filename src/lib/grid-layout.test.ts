@@ -36,7 +36,7 @@ describe('computeModuleLayout', () => {
     expect(computeModuleLayout(base)).toEqual({
       columns: 4, rows: 3, cellWidth: 468, cellHeight: 256,
       nameFontSize: 40, labelFontSize: 0, deptFontSize: 0, textHeight: 60, padding: 12,
-      moduleSize: 172, cardWidth: 240, cardHeight: 256,
+      moduleSize: 172, cardWidth: 240, cardHeight: 256, slotWidth: 468, slotHeight: 256,
     });
   });
 
@@ -63,6 +63,30 @@ describe('computeModuleLayout', () => {
     expect(effectiveGap(16, 0.5)).toBe(16);
     expect(layout.rows * layout.cardHeight).toBeLessThanOrEqual(800 * 1.6 + 1);
     expect(layout.columns * layout.cardWidth).toBeLessThanOrEqual(1920 * 1.6 + 1);
+  });
+
+  it('放大时行距 / 列距 ≥ 卡片尺寸（相邻行、列不重叠），且网格总高度有上限', () => {
+    for (const scale of [1, 1.2, 1.5, 1.8, 2]) {
+      const l = computeModuleLayout({ ...base, scale });
+      const gap = effectiveGap(base.gap, scale);
+      expect(l.slotHeight + gap, `row pitch @${scale}`).toBeGreaterThanOrEqual(l.cardHeight);
+      expect(l.slotWidth + gap, `col pitch @${scale}`).toBeGreaterThanOrEqual(l.cardWidth);
+      expect(l.rows * l.slotHeight + gap * (l.rows - 1)).toBeLessThanOrEqual(800 * 1.6 + l.rows);
+    }
+  });
+
+  it('各种数量与容器下，scale 1.2..2 的行距都不小于卡片高度', () => {
+    const failures: string[] = [];
+    for (const [containerWidth, containerHeight] of [[1920, 1080], [1280, 720], [1024, 600]]) {
+      for (let count = 1; count <= 40; count++) {
+        for (const scale of [1.2, 1.5, 1.8, 2]) {
+          const l = computeModuleLayout({ ...base, containerWidth, containerHeight, count, scale });
+          const gap = effectiveGap(base.gap, scale);
+          if (l.slotHeight + gap < l.cardHeight) failures.push(`${containerWidth}x${containerHeight} n${count} s${scale}`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
   });
 
   it('scale <= 1 的结果不受放大逻辑影响', () => {
