@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import type {
-  ActionResult, CurrentRound, EffectSettings, ModuleStylePatch, PageLayout, Participant, Prize, PrizeImage, Settings,
+  ActionResult, CurrentRound, DrawMode, EffectSettings, ModuleStylePatch, PageLayout, PageLayoutPatch, Participant, Prize, PrizeImage, Settings,
   SoundSettings, UploadedFont, Winner,
 } from '@/lib/types';
 import {
@@ -146,7 +146,7 @@ interface LotteryState extends LotteryData {
   setViewMode: (mode: ViewMode) => void;
 
   // 轮次状态机
-  setRoundConfig: (p: { moduleCount?: number; imagePoolIds?: string[] | null; namePoolIds?: string[] | null }) => ActionResult;
+  setRoundConfig: (p: { moduleCount?: number; imagePoolIds?: string[] | null; namePoolIds?: string[] | null; drawMode?: DrawMode }) => ActionResult;
   startPrizeRoll: () => ActionResult;
   stopPrizeRoll: () => ActionResult;
   startNameRoll: () => ActionResult;
@@ -162,6 +162,9 @@ interface LotteryState extends LotteryData {
   updateModuleStyle: (p: ModuleStylePatch) => void;
   updateEffects: (p: Partial<EffectSettings>) => void;
   updateSound: (p: Partial<SoundSettings>) => void;
+  updatePageLayout: (page: PageLayoutKey, p: PageLayoutPatch) => void;
+  addFont: (font: UploadedFont) => void;
+  removeFont: (key: string) => void;
 
   // 名单
   addParticipant: (p: Omit<Participant, 'id' | 'serial'>) => void;
@@ -174,6 +177,8 @@ interface LotteryState extends LotteryData {
   removePrizeImages: (ids: string[]) => { removed: string[]; blocked: string[] };
   clearPrizeImages: () => ActionResult;
 }
+type PageLayoutKey = 'welcome' | 'prize' | 'lottery';
+const PAGE_LAYOUT_FIELD = { welcome: 'welcomeLayout', prize: 'prizeLayout', lottery: 'lotteryLayout' } as const;
 const PHASE_ERROR = '当前阶段不能执行此操作';
 const REPLACE_IMPORT_ERROR = '已有抽奖记录，覆盖导入会破坏去重，请先「重置清零」或改用追加导入';
 const CLEAR_IMAGES_ERROR = '已有抽奖记录或本轮正在进行，无法清空图片池，请先「重置清零」';
@@ -430,10 +435,10 @@ export const useLotteryStore = create<LotteryState>()(
 
       setViewMode: (mode) => set({ viewMode: mode }),
 
-      setRoundConfig: ({ moduleCount, imagePoolIds, namePoolIds }) => {
+      setRoundConfig: ({ moduleCount, imagePoolIds, namePoolIds, drawMode }) => {
         const round = ensureRound(get());
         if (!round) return fail(NO_PRIZE_ERROR);
-        if ((moduleCount !== undefined || imagePoolIds !== undefined) && round.phase !== 'idle') return fail(PHASE_ERROR);
+        if ((moduleCount !== undefined || imagePoolIds !== undefined || drawMode !== undefined) && round.phase !== 'idle') return fail(PHASE_ERROR);
         if (namePoolIds !== undefined && round.phase !== 'idle' && round.phase !== 'prizesRevealed') return fail(PHASE_ERROR);
         const countError = moduleCount === undefined ? null : moduleCountError(moduleCount);
         if (countError) return fail(countError);
@@ -442,6 +447,7 @@ export const useLotteryStore = create<LotteryState>()(
         if (moduleCount !== undefined) next.moduleCount = moduleCount;
         if (imagePoolIds !== undefined) next.imagePoolIds = imagePoolIds ? [...imagePoolIds] : null;
         if (namePoolIds !== undefined) next.namePoolIds = namePoolIds ? [...namePoolIds] : null;
+        if (drawMode !== undefined) next.drawMode = drawMode;
         set({ currentRound: next });
         return OK;
       },
@@ -576,6 +582,28 @@ export const useLotteryStore = create<LotteryState>()(
         };
         return { settings: { ...state.settings, moduleStyle } };
       }),
+
+      updatePageLayout: (page, patch) => set((state) => {
+        const field = PAGE_LAYOUT_FIELD[page];
+        const current = state.settings[field];
+        const layout: PageLayout = {
+          ...current,
+          ...patch,
+          title: { ...current.title, ...patch.title },
+          subtitle: { ...current.subtitle, ...patch.subtitle },
+          decor: { ...current.decor, ...patch.decor },
+        };
+        return { settings: { ...state.settings, [field]: layout } };
+      }),
+
+      addFont: (font) => set((state) => ({
+        settings: { ...state.settings, fonts: [...state.settings.fonts.filter((f) => f.key !== font.key), font] },
+      })),
+
+      // 不删 IndexedDB：store 不做存储副作用，调用方（字体上传 UI）负责 deleteMedia
+      removeFont: (key) => set((state) => ({
+        settings: { ...state.settings, fonts: state.settings.fonts.filter((f) => f.key !== key) },
+      })),
 
       updateEffects: (patch) => set((state) => ({
         settings: { ...state.settings, effects: { ...state.settings.effects, ...patch } },

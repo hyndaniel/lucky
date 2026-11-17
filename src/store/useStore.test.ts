@@ -1035,3 +1035,62 @@ describe('持久化写入失败（配额）', () => {
     expect(localStorage.getItem('k2')).toBe('plain');
   });
 });
+
+describe('页面排版 / 字体 / 每轮抽奖模式', () => {
+  it('updatePageLayout 只合并目标页面的目标嵌套字段', () => {
+    const before = s().settings;
+    s().updatePageLayout('prize', { title: { fontSize: 72 } });
+    const after = s().settings;
+    expect(after.prizeLayout.title.fontSize).toBe(72);
+    expect(after.prizeLayout.title.color).toBe(before.prizeLayout.title.color);
+    expect(after.prizeLayout.title.align).toBe(before.prizeLayout.title.align);
+    expect(after.prizeLayout.title.fontFamily).toBe(before.prizeLayout.title.fontFamily);
+    expect(after.prizeLayout.subtitle).toEqual(before.prizeLayout.subtitle);
+    expect(after.welcomeLayout).toEqual(before.welcomeLayout);
+    expect(after.lotteryLayout).toEqual(before.lotteryLayout);
+  });
+
+  it('updatePageLayout 的 decor / verticalAlign / subtitle 补丁按字段合并', () => {
+    const before = s().settings;
+    s().updatePageLayout('lottery', { decor: { position: 'center' }, verticalAlign: 'bottom', subtitle: { color: '#123456' } });
+    const after = s().settings.lotteryLayout;
+    expect(after.decor).toEqual({ ...before.lotteryLayout.decor, position: 'center' });
+    expect(after.verticalAlign).toBe('bottom');
+    expect(after.subtitle).toEqual({ ...before.lotteryLayout.subtitle, color: '#123456' });
+    expect(after.title).toEqual(before.lotteryLayout.title);
+    expect(s().settings.welcomeLayout).toEqual(before.welcomeLayout);
+  });
+
+  it('addFont 追加、removeFont 按 key 删除', () => {
+    s().addFont({ key: 'font-a', family: 'F', name: 'f.ttf' });
+    s().addFont({ key: 'font-b', family: 'G', name: 'g.ttf' });
+    expect(s().settings.fonts).toHaveLength(2);
+    s().removeFont('font-a');
+    expect(s().settings.fonts).toEqual([{ key: 'font-b', family: 'G', name: 'g.ttf' }]);
+  });
+
+  it('addFont 同 key 时替换而不重复', () => {
+    s().addFont({ key: 'font-a', family: 'F', name: 'f.ttf' });
+    s().addFont({ key: 'font-a', family: 'F2', name: 'f2.ttf' });
+    expect(s().settings.fonts).toEqual([{ key: 'font-a', family: 'F2', name: 'f2.ttf' }]);
+  });
+
+  it('setRoundConfig({ drawMode }) 仅 idle 可改', () => {
+    s().selectPrize('p1');
+    expect(s().currentRound?.drawMode).toBe('image-then-name');
+    expect(s().setRoundConfig({ drawMode: 'image-only' })).toEqual(OK);
+    expect(s().currentRound?.drawMode).toBe('image-only');
+    expect(s().startPrizeRoll()).toEqual(OK);
+    expect(s().currentRound?.phase).toBe('rollingPrizes');
+    const rolling = s().currentRound;
+    expect(s().setRoundConfig({ drawMode: 'name-only' })).toEqual(fail(PHASE_ERROR));
+    expect(s().currentRound).toBe(rolling);
+    expect(s().currentRound?.drawMode).toBe('image-only');
+  });
+
+  it('updateModuleStyle 保留 shape / labelPosition', () => {
+    s().updateModuleStyle({ shape: 'circle', labelPosition: 'above' });
+    expect(s().settings.moduleStyle.shape).toBe('circle');
+    expect(s().settings.moduleStyle.labelPosition).toBe('above');
+  });
+});

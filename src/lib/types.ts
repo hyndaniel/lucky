@@ -73,6 +73,12 @@ export interface TextBlockStyle { fontFamily: string; fontSize: number; color: s
 // 页面装饰图；imageKey '' = 无图片（图片本体在 IndexedDB）
 export interface PageDecor { imageKey: string; imageName: string; widthPct: number; position: DecorPosition; }
 export interface PageLayout { verticalAlign: VAlign; title: TextBlockStyle; subtitle: TextBlockStyle; decor: PageDecor; }
+// updatePageLayout 的参数：title / subtitle / decor 按字段浅合并
+export type PageLayoutPatch = Partial<Omit<PageLayout, 'title' | 'subtitle' | 'decor'>> & {
+  title?: Partial<TextBlockStyle>;
+  subtitle?: Partial<TextBlockStyle>;
+  decor?: Partial<PageDecor>;
+};
 // 上传字体：key 为 IndexedDB 键（font-<id>），family 为 @font-face 使用的 CSS 名
 export interface UploadedFont { key: string; family: string; name: string; }
 
