@@ -335,3 +335,11 @@ export function getMediaUrl(key: string): Promise<string | null>; // 模块级 M
 - 纯逻辑（draw-engine、grid-layout、serial、name-import、image-processing 的纯函数、effects 的 splitEmojis、store 动作）用 Vitest 写单元测试，先写测试（TDD）。测试运行在 node 环境，`src/test/setup.ts` 提供内存版 localStorage/sessionStorage。
 - 不修改 `src/components/ui/` 下的 shadcn 组件。
 - 提交信息用中文 Conventional Commits，末尾附 `Co-Authored-By: Claude Code <noreply@anthropic.com>`。绝不 `git add` `src/assets/default-participants.ts` 与 `~$*.xlsx`（已在 .git/info/exclude 中排除；提交时按文件名 `git add <路径>`，禁止 `git add -f`）。
+
+---
+
+## 附记（2026-11-17）：排版 / 字体 / 抽奖模式解耦
+
+本规格实现后的后续迭代见 `docs/superpowers/specs/2026-11-17-layout-fonts-decouple-design.md`：每页排版（标题/副标题样式、纵向位置、装饰图）、自定义字体、每轮抽奖模式（先奖品后名字 / 只抽奖品 / 只抽名字）、模块外形与说明位置，以及 B1–B5 缺陷修复。
+
+该迭代对本规格的影响：`currentRound` 新增 `drawMode`，`advanceRound` 按模式分支（只抽奖品：`rollingPrizes → completed`；只抽名字：`idle → rollingNames → completed`）；持久化版本 8 → 9。本文档上文其余内容仍然有效，不在此改写。
