@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeModuleLayout, getGridColumns, type ModuleLayoutInput } from '@/lib/grid-layout';
+import { computeModuleLayout, effectiveGap, getGridColumns, type ModuleLayoutInput } from '@/lib/grid-layout';
 
 describe('getGridColumns', () => {
   it('1..12 使用预设表', () => {
@@ -46,13 +46,23 @@ describe('computeModuleLayout', () => {
     expect(layout.nameFontSize).toBe(40);
   });
 
-  it('scale > 1 时图片区比 scale 1 更大（可越过格子名义尺寸进入间隙），并有上限', () => {
-    const one = computeModuleLayout(base);
-    const big = computeModuleLayout({ ...base, scale: 1.8 });
-    expect(big.moduleSize).toBeGreaterThan(one.moduleSize);
-    expect(big.moduleSize).toBeLessThanOrEqual(one.moduleSize + base.gap); // 不会无限放大
-    expect(computeModuleLayout({ ...base, scale: 2 }).moduleSize).toBe(big.moduleSize);
-    expect(big.cardHeight).toBe(big.moduleSize + 2 * big.padding + big.textHeight);
+  it('scale > 1 真正放大：200% 至少是 100% 的 1.5 倍，且不同档位有区别（无死区）', () => {
+    const one = computeModuleLayout(base).moduleSize;
+    const m = (scale: number) => computeModuleLayout({ ...base, scale }).moduleSize;
+    expect(m(2)).toBeGreaterThanOrEqual(one * 1.5);
+    expect(m(2)).toBeGreaterThanOrEqual(m(1.8) + 10); // 1.8 与 2 之间无死区
+    expect(m(1.5)).toBeGreaterThan(m(1.2));
+    expect(m(1.8)).toBeGreaterThan(m(1.5));
+    expect(m(1.2)).toBeGreaterThan(one);
+  });
+
+  it('放大时网格总尺寸有上限（≤ 容器 × 1.6），间距随放大收到 0', () => {
+    const layout = computeModuleLayout({ ...base, scale: 2 });
+    expect(effectiveGap(16, 2)).toBe(0);
+    expect(effectiveGap(16, 1)).toBe(16);
+    expect(effectiveGap(16, 0.5)).toBe(16);
+    expect(layout.rows * layout.cardHeight).toBeLessThanOrEqual(800 * 1.6 + 1);
+    expect(layout.columns * layout.cardWidth).toBeLessThanOrEqual(1920 * 1.6 + 1);
   });
 
   it('scale <= 1 的结果不受放大逻辑影响', () => {

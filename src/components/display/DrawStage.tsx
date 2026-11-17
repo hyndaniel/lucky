@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLotteryStore } from '@/store/useStore';
 import { getRemainingSlots, resolveImagePool, resolveNamePool, sampleDistinct } from '@/lib/draw-engine';
-import { computeModuleLayout, DEPT_RATIO } from '@/lib/grid-layout';
+import { computeModuleLayout, DEPT_RATIO, effectiveGap } from '@/lib/grid-layout';
 import { fitFontSize } from '@/lib/fit-text';
 import { createTextMeasurer } from '@/lib/text-measure';
 import { DEFAULT_MODULE_COUNT } from '@/lib/defaults';
@@ -74,7 +74,7 @@ export default function DrawStage() {
     };
   }, [winners, roundId, round, prize, prizeImages, participants]);
   const imageById = useMemo(() => new Map(prizeImages.map((img) => [img.id, img])), [prizeImages]);
-  const resultImageIds = round?.resultImageIds ?? [];
+  const resultImageIds = useMemo(() => round?.resultImageIds ?? [], [round]);
 
   // 本轮图片池 + 结果图片的 URL（在长生命周期的这一层加载，模块挂载时不闪空）
   const mediaKeys = [...new Set([...imagePool.map((img) => img.id), ...resultImageIds])];
@@ -140,13 +140,15 @@ export default function DrawStage() {
     return () => observer.disconnect();
   }, []);
 
+  const scale = Math.min(2, Math.max(0.4, style.moduleScale / 100)) || 1; // 0.4..2；>1 真实放大，可溢出格子（上限见 grid-layout）
+  const gap = effectiveGap(GRID_GAP, scale);
   const layout = computeModuleLayout({
     containerWidth: size.width,
     containerHeight: size.height,
     count: moduleCount,
     columns: style.columns,
     gap: GRID_GAP,
-    scale: Math.min(2, Math.max(0.4, style.moduleScale / 100)) || 1, // 0.4..2；>1 可放大，受格子与间距限制
+    scale,
     nameFontSize: style.nameStyle.fontSize,
     labelFontSize: style.labelStyle.fontSize,
     showName: style.showName,
@@ -172,25 +174,43 @@ export default function DrawStage() {
     return { state: 'revealed', rollingPart: 'name', imageId, name: winner?.name ?? null, label, dept: winner?.dept ?? null };
   };
 
-  // 统一字号：全体模块当前显示的文字合并测算一次，所有模块共用（避免各模块各自缩小导致字号参差）。
+  // 统一字号：对整个候选池（全部名字 / 全部图片说明 / 全部部门）测算一次，而不是只看当前帧，
+  // 这样滚动期间字号恒定不闪；所有模块共用同一字号。
   // 无 canvas（jsdom 等）时 createTextMeasurer 返回 null，退回布局字号。
-  const views = Array.from({ length: moduleCount }, (_, i) => viewFor(i));
   const textWidth = Math.max(0, layout.cardWidth - 2 * layout.padding);
-  const fitShared = (texts: (string | null)[], base: number, family: string, weight: number) => {
+  const nameFamily = style.nameStyle.fontFamily || settings.fontFamily || '';
+  const labelFamily = style.labelStyle.fontFamily || settings.fontFamily || '';
+  const poolNames = useMemo(() => namePool.map((p) => p.name), [namePool]);
+  const poolDepts = useMemo(() => namePool.map((p) => p.dept), [namePool]);
+  const poolLabels = useMemo(
+    () => [...imagePool.map((img) => img.label), ...resultImageIds.map((id) => imageById.get(id)?.label), ...roundWinners.map((w) => w.imageLabel)]
+      .filter((t): t is string => !!t),
+    [imagePool, resultImageIds, imageById, roundWinners],
+  );
+  const fitShared = (texts: string[], base: number, family: string, weight: number) => {
     const measure = createTextMeasurer(family, weight);
     if (!measure || base <= 0) return base;
-    return fitFontSize(texts.filter((t): t is string => !!t), textWidth, base, measure);
+    return fitFontSize(texts, textWidth, base, measure);
   };
-  const nameFontSize = fitShared(
-    views.map((v) => v.name), layout.nameFontSize, style.nameStyle.fontFamily || settings.fontFamily || '', 700,
+  const nameFontSize = useMemo(
+    // 本轮中奖者必来自 namePool（池只排除「本轮之前」的中奖记录），所以只测候选池即可覆盖所有会出现的名字
+    () => fitShared(poolNames, layout.nameFontSize, nameFamily, 700),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [poolNames, layout.nameFontSize, nameFamily, textWidth],
   );
-  const labelFontSize = fitShared(
-    views.map((v) => v.label), layout.labelFontSize, style.labelStyle.fontFamily || settings.fontFamily || '', 500,
+  const labelFontSize = useMemo(
+    () => fitShared(poolLabels, layout.labelFontSize, labelFamily, 500),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [poolLabels, layout.labelFontSize, labelFamily, textWidth],
   );
-  // 部门字号以统一后的名字字号为基准（约 0.7×），再按部门文字统一缩小
-  const deptFontSize = showDept
-    ? fitShared(views.map((v) => v.dept), Math.floor(nameFontSize * DEPT_RATIO), style.labelStyle.fontFamily || settings.fontFamily || '', 500)
-    : 0;
+  // 部门字号以统一后的名字字号为基准（约 0.7×），再按候选池里的部门文字统一缩小
+  const deptFontSize = useMemo(
+    () => (showDept ? fitShared(poolDepts, Math.floor(nameFontSize * DEPT_RATIO), labelFamily, 500) : 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [showDept, poolDepts, nameFontSize, labelFamily, textWidth],
+  );
+
+  const views = Array.from({ length: moduleCount }, (_, i) => viewFor(i));
 
   const rows: number[][] = [];
   for (let i = 0; i < moduleCount; i += layout.columns) {
@@ -245,12 +265,12 @@ export default function DrawStage() {
           <div
             style={{
               position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: GRID_GAP,
+              alignItems: 'center', justifyContent: 'center', gap,
             }}
           >
             {rows.map((row, r) => (
               // 每排单独居中，最后一排不足时也居中
-              <div key={r} style={{ display: 'flex', justifyContent: 'center', gap: GRID_GAP }}>
+              <div key={r} style={{ display: 'flex', justifyContent: 'center', gap }}>
                 {row.map((i) => {
                   const view = views[i];
                   return (

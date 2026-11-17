@@ -319,7 +319,7 @@ export function DisplayStyleTab() {
         </div>
 
         <Section title="模块">
-          <SliderRow label="大小" value={moduleStyle.moduleScale} min={40} max={100} unit="%" onChange={(moduleScale) => updateModuleStyle({ moduleScale })} />
+          <SliderRow label="大小" value={moduleStyle.moduleScale} min={40} max={200} unit="%" onChange={(moduleScale) => updateModuleStyle({ moduleScale })} />
           <div className="space-y-2">
             <Label>每排数量</Label>
             <Select
