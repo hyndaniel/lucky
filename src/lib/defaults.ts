@@ -1,10 +1,11 @@
-import type { EffectSettings, ModuleStyle, Prize, SoundSettings } from '@/lib/types';
+import type { EffectSettings, ModuleStyle, PageLayout, Prize, SoundSettings } from '@/lib/types';
 
 export const DEFAULT_MODULE_STYLE: ModuleStyle = {
   showImageLabel: false, showName: true,
   nameStyle:  { fontFamily: '', fontSize: 40, color: '#b94d24' },
   labelStyle: { fontFamily: '', fontSize: 22, color: '#a66b52' },
   moduleScale: 100, columns: 0, backgroundColor: '#ffffff', backgroundOpacity: 90,
+  shape: 'rounded', labelPosition: 'below',
 };
 
 export const DEFAULT_EFFECTS: EffectSettings = { kinds: ['confetti'], emojis: '🎉🧧✨', durationSec: 4, onPrizeReveal: false };
@@ -24,10 +25,62 @@ export const INITIAL_PRIZES: Prize[] = [
 export const DEFAULT_MODULE_COUNT = 12;
 export const MAX_MODULE_COUNT = 60;
 
-// 大屏字体预设（系统设置与模块文字样式共用）
+const makeLayout = (verticalAlign: PageLayout['verticalAlign']): PageLayout => ({
+  verticalAlign,
+  title: { fontFamily: '', fontSize: 64, color: '#f5d16b', align: 'center' },
+  subtitle: { fontFamily: '', fontSize: 28, color: '#d9c48a', align: 'center' },
+  decor: { imageKey: '', imageName: '', widthPct: 20, position: 'top-right' },
+});
+
+export const DEFAULT_WELCOME_LAYOUT: PageLayout = makeLayout('center');
+export const DEFAULT_PRIZE_LAYOUT: PageLayout = makeLayout('top');
+export const DEFAULT_LOTTERY_LAYOUT: PageLayout = makeLayout('top');
+
+// 大屏字体预设（系统设置、页面排版与模块文字样式共用）。只有字体族名称，不打包字体文件
 export const FONT_PRESETS: { label: string; value: string }[] = [
   { label: '系统无衬线（推荐）', value: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-  { label: '微软雅黑 / 苹方', value: "'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif" },
-  { label: '宋体风格', value: "'Noto Serif SC', 'Songti SC', SimSun, serif" },
-  { label: '楷体风格', value: 'KaiTi, STKaiti, serif' },
+  // 中文
+  { label: '中文 / 微软雅黑', value: "'Microsoft YaHei', 微软雅黑, sans-serif" },
+  { label: '中文 / 苹方', value: "'PingFang SC', 'PingFang TC', sans-serif" },
+  { label: '中文 / 微软雅黑 + 苹方', value: "'Microsoft YaHei', 'PingFang SC', system-ui, sans-serif" },
+  { label: '中文 / 黑体', value: "SimHei, 黑体, 'Heiti SC', sans-serif" },
+  { label: '中文 / 华文黑体', value: "'STHeiti', 'Heiti SC', 'Heiti TC', sans-serif" },
+  { label: '中文 / 思源黑体', value: "'Source Han Sans SC', 'Noto Sans SC', 'Noto Sans CJK SC', sans-serif" },
+  { label: '中文 / 文泉驿微米黑', value: "'WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', sans-serif" },
+  { label: '中文 / 方正兰亭黑', value: "'FZLanTingHei-R-GBK', 'Lantinghei SC', sans-serif" },
+  { label: '中文 / 冬青黑体', value: "'Hiragino Sans GB', 'STHeiti', sans-serif" },
+  { label: '中文 / 宋体', value: "SimSun, 宋体, 'Songti SC', serif" },
+  { label: '中文 / 新宋体', value: "NSimSun, 新宋体, SimSun, serif" },
+  { label: '中文 / 思源宋体', value: "'Source Han Serif SC', 'Noto Serif SC', 'Noto Serif CJK SC', serif" },
+  { label: '中文 / 华文宋体', value: "STSong, 华文宋体, 'Songti SC', serif" },
+  { label: '中文 / 华文中宋', value: "STZhongsong, 华文中宋, 'Songti SC', serif" },
+  { label: '中文 / 仿宋', value: "FangSong, 仿宋, STFangsong, serif" },
+  { label: '中文 / 楷体', value: "KaiTi, 楷体, STKaiti, 'Kaiti SC', serif" },
+  { label: '中文 / 华文行楷', value: "STXingkai, 华文行楷, 'Xingkai SC', cursive" },
+  { label: '中文 / 华文隶书', value: "STLiti, 华文隶书, LiSu, 隶书, 'Libian SC', serif" },
+  { label: '中文 / 幼圆', value: "YouYuan, 幼圆, 'Yuanti SC', sans-serif" },
+  { label: '中文 / 圆体', value: "'Yuanti SC', 'Yuanti TC', 'Hanzipen SC', sans-serif" },
+  { label: '中文 / 手札体', value: "'Hannotate SC', 'Hannotate TC', 'Xingkai SC', cursive" },
+  // English
+  { label: 'English / Arial', value: "Arial, 'Helvetica Neue', Helvetica, sans-serif" },
+  { label: 'English / Helvetica', value: "'Helvetica Neue', Helvetica, Arial, sans-serif" },
+  { label: 'English / Verdana', value: "Verdana, Geneva, sans-serif" },
+  { label: 'English / Tahoma', value: "Tahoma, Geneva, Verdana, sans-serif" },
+  { label: 'English / Trebuchet MS', value: "'Trebuchet MS', 'Lucida Grande', sans-serif" },
+  { label: 'English / Segoe UI', value: "'Segoe UI', Roboto, 'Helvetica Neue', sans-serif" },
+  { label: 'English / Roboto', value: "Roboto, 'Helvetica Neue', Arial, sans-serif" },
+  { label: 'English / Open Sans', value: "'Open Sans', 'Segoe UI', Arial, sans-serif" },
+  { label: 'English / Lato', value: "Lato, 'Helvetica Neue', Arial, sans-serif" },
+  { label: 'English / Montserrat', value: "Montserrat, 'Helvetica Neue', Arial, sans-serif" },
+  { label: 'English / Impact', value: "Impact, 'Arial Narrow Bold', 'Haettenschweiler', sans-serif" },
+  { label: 'English / Arial Black', value: "'Arial Black', 'Arial Bold', Gadget, sans-serif" },
+  { label: 'English / Georgia', value: "Georgia, 'Times New Roman', serif" },
+  { label: 'English / Times New Roman', value: "'Times New Roman', Times, serif" },
+  { label: 'English / Palatino', value: "'Palatino Linotype', Palatino, 'Book Antiqua', serif" },
+  { label: 'English / Garamond', value: "Garamond, 'Baskerville', 'Times New Roman', serif" },
+  { label: 'English / Didot', value: "Didot, 'Bodoni MT', 'Playfair Display', serif" },
+  { label: 'English / Courier New', value: "'Courier New', Courier, monospace" },
+  { label: 'English / Consolas', value: "Consolas, Monaco, 'Lucida Console', monospace" },
+  { label: 'English / Brush Script', value: "'Brush Script MT', 'Segoe Script', cursive" },
+  { label: 'English / Comic Sans', value: "'Comic Sans MS', 'Comic Neue', cursive" },
 ];

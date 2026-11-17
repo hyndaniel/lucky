@@ -3,11 +3,12 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { nanoid } from 'nanoid';
 import { toast } from 'sonner';
 import type {
-  ActionResult, CurrentRound, EffectSettings, ModuleStylePatch, Participant, Prize, PrizeImage, Settings,
-  SoundSettings, Winner,
+  ActionResult, CurrentRound, EffectSettings, ModuleStylePatch, PageLayout, Participant, Prize, PrizeImage, Settings,
+  SoundSettings, UploadedFont, Winner,
 } from '@/lib/types';
 import {
-  DEFAULT_EFFECTS, DEFAULT_MODULE_COUNT, DEFAULT_MODULE_STYLE, DEFAULT_SOUND, INITIAL_PRIZES,
+  DEFAULT_EFFECTS, DEFAULT_LOTTERY_LAYOUT, DEFAULT_MODULE_COUNT, DEFAULT_MODULE_STYLE, DEFAULT_PRIZE_LAYOUT,
+  DEFAULT_SOUND, DEFAULT_WELCOME_LAYOUT, INITIAL_PRIZES,
 } from '@/lib/defaults';
 import {
   drawImages, drawNames, getAvailableImages, getDefaultImagePoolIds, getFrozenImageIds, getMustWinCandidates,
@@ -62,6 +63,10 @@ const DEFAULT_SETTINGS: Settings = {
   moduleStyle: DEFAULT_MODULE_STYLE,
   effects: DEFAULT_EFFECTS,
   sound: DEFAULT_SOUND,
+  welcomeLayout: DEFAULT_WELCOME_LAYOUT,
+  prizeLayout: DEFAULT_PRIZE_LAYOUT,
+  lotteryLayout: DEFAULT_LOTTERY_LAYOUT,
+  fonts: [],
 };
 
 type AnyRecord = Record<string, unknown>;
@@ -82,7 +87,18 @@ function withDefaults<T extends object>(defaults: T, raw: unknown): T {
   return result;
 }
 
-// 把任意旧设置补成完整的 Settings（含 moduleStyle / effects / sound 及其子字段）
+// 页面排版：title / subtitle / decor 各自按字段补默认值
+function normalizeLayout(defaults: PageLayout, raw: unknown): PageLayout {
+  const layout = withDefaults(defaults, raw);
+  return {
+    ...layout,
+    title: withDefaults(defaults.title, layout.title),
+    subtitle: withDefaults(defaults.subtitle, layout.subtitle),
+    decor: withDefaults(defaults.decor, layout.decor),
+  };
+}
+
+// 把任意旧设置补成完整的 Settings（含 moduleStyle / effects / sound / 页面排版及其子字段）
 export function normalizeSettings(raw: unknown): Settings {
   const source = isRecord(raw) ? raw : {};
   const moduleStyle = withDefaults(DEFAULT_MODULE_STYLE, source.moduleStyle);
@@ -96,6 +112,10 @@ export function normalizeSettings(raw: unknown): Settings {
     },
     effects: { ...effects, kinds: [...effects.kinds] },
     sound: withDefaults(DEFAULT_SOUND, source.sound),
+    welcomeLayout: normalizeLayout(DEFAULT_WELCOME_LAYOUT, source.welcomeLayout),
+    prizeLayout: normalizeLayout(DEFAULT_PRIZE_LAYOUT, source.prizeLayout),
+    lotteryLayout: normalizeLayout(DEFAULT_LOTTERY_LAYOUT, source.lotteryLayout),
+    fonts: Array.isArray(source.fonts) ? (source.fonts as UploadedFont[]) : [],
   };
 }
 interface LotteryData {
@@ -175,6 +195,7 @@ function createRound(state: LotteryData, prize: Prize, preferredCount = DEFAULT_
     namePoolIds: null,
     resultImageIds: [],
     resultNameIds: [],
+    drawMode: 'image-then-name',
   };
 }
 
@@ -235,7 +256,7 @@ const isSerial = (value: unknown): value is number => typeof value === 'number' 
 const toCounter = (value: unknown) => (isSerial(value) ? value : 0);
 const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? value as T[] : []);
 
-// 迁移到 v8：先执行 v7 的默认数据修复，再补编号、轮次与图片池字段
+// 迁移到 v9（v8→v9 只需补全 settings 的新字段，由 normalizeSettings 完成；currentRound 仍重置为 null）：先执行 v7 的默认数据修复，再补编号、轮次与图片池字段
 function migratePersistedState(persisted: unknown): Partial<LotteryData> {
   const raw = isRecord(persisted) ? persisted : {};
   const winners = asArray<Winner>(raw.winners);
@@ -633,7 +654,7 @@ export const useLotteryStore = create<LotteryState>()(
     }),
     {
       name: 'lucky-draw-storage',
-      version: 8,
+      version: 9,
       migrate: (persistedState) => migratePersistedState(persistedState) as LotteryState,
       // 每次 rehydrate 都会调用：浅合并后把设置补成完整结构，防止旧数据缺字段
       merge: (persistedState, currentState) => {

@@ -26,6 +26,16 @@ export interface PrizeImage {
   createdAt: number;
 }
 
+export type HAlign = 'left' | 'center' | 'right';
+export type VAlign = 'top' | 'center' | 'bottom';
+export type ModuleShape = 'square' | 'rounded' | 'circle';
+export type LabelPosition = 'above' | 'below';
+export type DrawMode = 'image-then-name' | 'image-only' | 'name-only';
+export type DecorPosition =
+  | 'top-left' | 'top-center' | 'top-right'
+  | 'center-left' | 'center' | 'center-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
+
 export type RoundPhase = 'idle' | 'rollingPrizes' | 'prizesRevealed' | 'rollingNames' | 'completed';
 
 export interface CurrentRound {
@@ -37,6 +47,7 @@ export interface CurrentRound {
   namePoolIds: string[] | null;  // null = 自动选择
   resultImageIds: string[];     // 阶段一结果，长度 = moduleCount
   resultNameIds: string[];      // 阶段二结果，与 resultImageIds 下标一一对应
+  drawMode: DrawMode;           // 本轮抽奖模式，仅 idle 时可改
 }
 
 export interface TextStyle { fontFamily: string; fontSize: number; color: string; } // fontFamily '' = 跟随大屏字体
@@ -49,12 +60,22 @@ export interface ModuleStyle {
   columns: number;              // 0 = 自动；>0 固定每排数量
   backgroundColor: string;      // '#rrggbb'
   backgroundOpacity: number;    // 0..100
+  shape: ModuleShape;           // 模块外形
+  labelPosition: LabelPosition; // 文字在图片上方 / 下方
 }
 // updateModuleStyle 的参数：嵌套的 TextStyle 也按字段浅合并
 export type ModuleStylePatch = Partial<Omit<ModuleStyle, 'nameStyle' | 'labelStyle'>> & {
   nameStyle?: Partial<TextStyle>;
   labelStyle?: Partial<TextStyle>;
 };
+// 页面标题 / 副标题的文字样式；fontFamily '' = 跟随大屏字体
+export interface TextBlockStyle { fontFamily: string; fontSize: number; color: string; align: HAlign; }
+// 页面装饰图；imageKey '' = 无图片（图片本体在 IndexedDB）
+export interface PageDecor { imageKey: string; imageName: string; widthPct: number; position: DecorPosition; }
+export interface PageLayout { verticalAlign: VAlign; title: TextBlockStyle; subtitle: TextBlockStyle; decor: PageDecor; }
+// 上传字体：key 为 IndexedDB 键（font-<id>），family 为 @font-face 使用的 CSS 名
+export interface UploadedFont { key: string; family: string; name: string; }
+
 export type EffectKind = 'confetti' | 'stars' | 'rockets' | 'emoji';
 export interface EffectSettings { kinds: EffectKind[]; emojis: string; durationSec: number; onPrizeReveal: boolean; }
 export type RollSoundKind = 'none' | 'tick' | 'countdown' | 'custom';
@@ -88,4 +109,8 @@ export interface Settings {
   moduleStyle: ModuleStyle;                // 抽奖模块样式
   effects: EffectSettings;                 // 中奖特效
   sound: SoundSettings;                    // 音效
+  welcomeLayout: PageLayout;               // 欢迎页排版
+  prizeLayout: PageLayout;                 // 奖项页排版
+  lotteryLayout: PageLayout;               // 抽奖页排版
+  fonts: UploadedFont[];                   // 已上传字体（字体本体在 IndexedDB）
 }

@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ActionResult, Participant, PrizeImage, Winner } from '@/lib/types';
-import { DEFAULT_EFFECTS, DEFAULT_MODULE_STYLE, DEFAULT_SOUND, INITIAL_PRIZES } from '@/lib/defaults';
+import {
+  DEFAULT_EFFECTS, DEFAULT_LOTTERY_LAYOUT, DEFAULT_MODULE_STYLE, DEFAULT_PRIZE_LAYOUT, DEFAULT_SOUND, DEFAULT_WELCOME_LAYOUT,
+  FONT_PRESETS, INITIAL_PRIZES,
+} from '@/lib/defaults';
 import { resolveImagePool, resolveNamePool } from '@/lib/draw-engine';
 import { DEFAULT_PARTICIPANTS } from '@/assets/default-participants';
 import hermesLogo from '@/assets/hermes-logo.jpg';
@@ -771,6 +774,50 @@ describe('normalizeSettings', () => {
     expect(out).not.toHaveProperty('winnersPerPage');
   });
 
+  it('缺页面排版 / 字体 / 形状时补默认值（v9）', () => {
+    const out = normalizeSettings({});
+    expect(out.welcomeLayout).toEqual(DEFAULT_WELCOME_LAYOUT);
+    expect(out.prizeLayout).toEqual(DEFAULT_PRIZE_LAYOUT);
+    expect(out.lotteryLayout).toEqual(DEFAULT_LOTTERY_LAYOUT);
+    expect(out.fonts).toEqual([]);
+    expect(out.moduleStyle.shape).toBe('rounded');
+    expect(out.moduleStyle.labelPosition).toBe('below');
+    expect(DEFAULT_WELCOME_LAYOUT.verticalAlign).toBe('center');
+    expect(DEFAULT_PRIZE_LAYOUT.verticalAlign).toBe('top');
+    expect(DEFAULT_LOTTERY_LAYOUT.verticalAlign).toBe('top');
+    expect(DEFAULT_WELCOME_LAYOUT.decor).toEqual({ imageKey: '', imageName: '', widthPct: 20, position: 'top-right' });
+  });
+
+  it('页面排版嵌套字段只补缺失项，类型不符用默认值，fonts 非数组时为空数组', () => {
+    const out = normalizeSettings({
+      welcomeLayout: { verticalAlign: 'bottom', title: { color: '#111111', fontSize: '9' }, decor: { widthPct: 35 } },
+      fonts: [{ key: 'font-1', family: 'F1', name: 'a.ttf' }],
+    });
+    expect(out.welcomeLayout).toEqual({
+      ...DEFAULT_WELCOME_LAYOUT,
+      verticalAlign: 'bottom',
+      title: { ...DEFAULT_WELCOME_LAYOUT.title, color: '#111111' },
+      decor: { ...DEFAULT_WELCOME_LAYOUT.decor, widthPct: 35 },
+    });
+    expect(out.fonts).toEqual([{ key: 'font-1', family: 'F1', name: 'a.ttf' }]);
+    expect(normalizeSettings({ fonts: 'x' }).fonts).toEqual([]);
+  });
+
+  it('默认排版不与默认对象共享引用（避免意外修改）', () => {
+    const out = normalizeSettings({});
+    expect(out.welcomeLayout).not.toBe(DEFAULT_WELCOME_LAYOUT);
+    expect(out.welcomeLayout.title).not.toBe(DEFAULT_WELCOME_LAYOUT.title);
+    expect(out.welcomeLayout.decor).not.toBe(DEFAULT_WELCOME_LAYOUT.decor);
+  });
+
+  it('FONT_PRESETS 约 20 个中文 + 20 个英文，且均以通用字体族结尾', () => {
+    const cn = FONT_PRESETS.filter((f) => f.label.startsWith('中文 / '));
+    const en = FONT_PRESETS.filter((f) => f.label.startsWith('English / '));
+    expect(cn.length).toBeGreaterThanOrEqual(20);
+    expect(en.length).toBeGreaterThanOrEqual(20);
+    for (const f of FONT_PRESETS) expect(f.value).toMatch(/(sans-serif|serif|monospace|cursive|fantasy)$/);
+  });
+
   it('输入为空或非对象时返回完整默认设置，不抛错', () => {
     for (const raw of [undefined, null, 'x', 42]) {
       const out = normalizeSettings(raw);
@@ -897,6 +944,49 @@ describe('persist migrate（v7 → v8）', () => {
     expect(s()).not.toHaveProperty('isRolling');
     expect(s().settings.moduleStyle).toEqual(DEFAULT_MODULE_STYLE);
     expect(typeof s().advanceRound).toBe('function');
+  });
+});
+
+describe('persist migrate（v8 → v9）', () => {
+  const migrate = useLotteryStore.persist.getOptions().migrate!;
+  const v8State = () => ({
+    participants: [], winners: [], prizes: INITIAL_PRIZES.map((p) => ({ ...p })), prizeImages: [],
+    currentPrizeId: '1', viewMode: 'lottery',
+    currentRound: {
+      id: 'r', roundNo: 1, phase: 'idle', moduleCount: 12, imagePoolIds: null, namePoolIds: null,
+      resultImageIds: [], resultNameIds: [],
+    },
+    settings: {
+      title: 'T', password: 'pw', welcomeTitle: 'W', welcomeSubtitle: 'BONDING', prizePageTitle: '奖项', logo: '',
+      moduleStyle: { showName: false },
+    },
+  });
+
+  it('v8 状态（无排版 / 字体 / 形状字段）迁移不抛错且新字段为默认值', () => {
+    const out = migrate(v8State(), 8) as StoreState;
+    expect(out.settings.welcomeLayout).toEqual(DEFAULT_WELCOME_LAYOUT);
+    expect(out.settings.prizeLayout).toEqual(DEFAULT_PRIZE_LAYOUT);
+    expect(out.settings.lotteryLayout).toEqual(DEFAULT_LOTTERY_LAYOUT);
+    expect(out.settings.fonts).toEqual([]);
+    expect(out.settings.moduleStyle).toEqual({ ...DEFAULT_MODULE_STYLE, showName: false });
+    expect(out.settings.moduleStyle.shape).toBe('rounded');
+    expect(out.settings.moduleStyle.labelPosition).toBe('below');
+    // 迁移会清空进行中的轮次，无需为缺 drawMode 的旧轮次补字段
+    expect(out.currentRound).toBeNull();
+  });
+
+  it('新建轮次默认 drawMode 为 image-then-name', () => {
+    expect(useLotteryStore.getState().selectPrize('p1')).toEqual(OK);
+    expect(s().currentRound?.drawMode).toBe('image-then-name');
+  });
+
+  it('rehydrate 读取 v8 明文存储后得到完整 v9 状态', async () => {
+    localStorage.setItem('lucky-draw-storage', JSON.stringify({ state: v8State(), version: 8 }));
+    await useLotteryStore.persist.rehydrate();
+    expect(s().settings.welcomeLayout).toEqual(DEFAULT_WELCOME_LAYOUT);
+    expect(s().settings.fonts).toEqual([]);
+    expect(s().currentRound).toBeNull();
+    expect(useLotteryStore.persist.getOptions().version).toBe(9);
   });
 });
 

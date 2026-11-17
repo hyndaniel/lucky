@@ -48,7 +48,7 @@ const prize: Prize = { id: 'p1', name: '一等奖', count: 6 };
 
 const round = (extra: Partial<CurrentRound> = {}): CurrentRound => ({
   id: 'r1', roundNo: 1, moduleCount: 3, phase: 'idle',
-  imagePoolIds: null, namePoolIds: null, resultImageIds: [], resultNameIds: [],
+  imagePoolIds: null, namePoolIds: null, resultImageIds: [], resultNameIds: [], drawMode: 'image-then-name',
   ...extra,
 });
 

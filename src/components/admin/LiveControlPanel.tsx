@@ -58,7 +58,7 @@ export function LiveControlPanel({ controlledMode, onEditPrize, onDeletePrize, o
   const round: CurrentRound | null = useMemo(() => {
     if (currentRound || !currentPrize) return currentRound;
     return {
-      id: '', roundNo: 0, phase: 'idle', namePoolIds: null, resultImageIds: [], resultNameIds: [],
+      id: '', roundNo: 0, phase: 'idle', namePoolIds: null, resultImageIds: [], resultNameIds: [], drawMode: 'image-then-name',
       moduleCount: Math.max(1, Math.min(DEFAULT_MODULE_COUNT, getRemainingSlots(currentPrize, winners))),
       imagePoolIds: getDefaultImagePoolIds(getAvailableImages(prizeImages, winners), currentPrize.name),
     };
