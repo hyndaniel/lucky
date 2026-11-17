@@ -12,7 +12,7 @@ import { useRollingTicker } from '@/hooks/useRollingTicker';
 import { useStageFx } from '@/hooks/useStageFx';
 import PrizeModule, { type PrizeModuleState } from '@/components/display/PrizeModule';
 import PageDecorImage from '@/components/display/PageDecorImage';
-import { textBlockStyle } from '@/lib/page-layout-style';
+import { headerOrder, textBlockStyle } from '@/lib/page-layout-style';
 
 type RollKind = 'image' | 'name';
 
@@ -230,7 +230,6 @@ export default function DrawStage() {
   const pageLayout = settings.lotteryLayout;
   const titleCss = textBlockStyle(pageLayout.title);
   const subtitleCss = textBlockStyle(pageLayout.subtitle);
-  const headerBelow = pageLayout.verticalAlign === 'bottom';
 
   return (
     // 底部与两侧至少留 72px：避开左下音频提示与右下全屏 / 后台按钮（距边 24px）
@@ -240,7 +239,7 @@ export default function DrawStage() {
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2.5vh',
       }}
     >
-      <header style={{ flexShrink: 0, width: '100%', order: headerBelow ? 2 : 0 }}>
+      <header style={{ flexShrink: 0, width: '100%', order: headerOrder(pageLayout.verticalAlign) }}>
         {settings.title && (
           <div style={{ fontWeight: 600, letterSpacing: '0.3em', ...subtitleCss }}>
             {settings.title}

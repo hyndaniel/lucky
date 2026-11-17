@@ -57,3 +57,8 @@ export function textBlockStyle(block: TextBlockStyle): CSSProperties {
 export function verticalJustify(align: VAlign): CSSProperties['justifyContent'] {
   return align === 'top' ? 'flex-start' : align === 'bottom' ? 'flex-end' : 'center';
 }
+
+// 抽奖页页头相对网格的次序：verticalAlign 为 bottom 时排在网格之后，top / center 排在之前
+export function headerOrder(align: VAlign): number {
+  return align === 'bottom' ? 2 : 0;
+}

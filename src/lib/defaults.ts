@@ -1,4 +1,4 @@
-import type { EffectSettings, ModuleStyle, PageLayout, Prize, SoundSettings } from '@/lib/types';
+import type { EffectSettings, ModuleStyle, PageLayout, Prize, SoundSettings, TextBlockStyle } from '@/lib/types';
 
 export const DEFAULT_MODULE_STYLE: ModuleStyle = {
   showImageLabel: false, showName: true,
@@ -25,16 +25,28 @@ export const INITIAL_PRIZES: Prize[] = [
 export const DEFAULT_MODULE_COUNT = 12;
 export const MAX_MODULE_COUNT = 60;
 
-const makeLayout = (verticalAlign: PageLayout['verticalAlign']): PageLayout => ({
+// 默认配色取自大屏米白底（#fffdfb，见 index.css）上可读的主题色，字号对应各页改版前的视觉权重：
+// 欢迎页大标题 ~128px、奖项页标题 48px、抽奖页奖项名 ~72px（原 clamp(40px, 7vh, 88px) 在 1080p 下约 76px）
+const makeLayout = (
+  verticalAlign: PageLayout['verticalAlign'],
+  title: Pick<TextBlockStyle, 'fontSize' | 'color'>,
+  subtitle: Pick<TextBlockStyle, 'fontSize' | 'color'>,
+): PageLayout => ({
   verticalAlign,
-  title: { fontFamily: '', fontSize: 64, color: '#f5d16b', align: 'center' },
-  subtitle: { fontFamily: '', fontSize: 28, color: '#d9c48a', align: 'center' },
+  title: { fontFamily: '', align: 'center', ...title },
+  subtitle: { fontFamily: '', align: 'center', ...subtitle },
   decor: { imageKey: '', imageName: '', widthPct: 20, position: 'top-right' },
 });
 
-export const DEFAULT_WELCOME_LAYOUT: PageLayout = makeLayout('center');
-export const DEFAULT_PRIZE_LAYOUT: PageLayout = makeLayout('top');
-export const DEFAULT_LOTTERY_LAYOUT: PageLayout = makeLayout('top');
+export const DEFAULT_WELCOME_LAYOUT: PageLayout = makeLayout(
+  'center', { fontSize: 128, color: '#b94d24' }, { fontSize: 36, color: '#d86632' },
+);
+export const DEFAULT_PRIZE_LAYOUT: PageLayout = makeLayout(
+  'top', { fontSize: 48, color: '#d86632' }, { fontSize: 28, color: '#a66b52' },
+);
+export const DEFAULT_LOTTERY_LAYOUT: PageLayout = makeLayout(
+  'top', { fontSize: 72, color: '#b94d24' }, { fontSize: 26, color: '#a66b52' },
+);
 
 // 大屏字体预设（系统设置、页面排版与模块文字样式共用）。只有字体族名称，不打包字体文件
 export const FONT_PRESETS: { label: string; value: string }[] = [

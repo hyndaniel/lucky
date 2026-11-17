@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PageDecor } from '@/lib/types';
-import { decorPositionStyle, textBlockStyle, verticalJustify } from '@/lib/page-layout-style';
+import { decorPositionStyle, headerOrder, textBlockStyle, verticalJustify } from '@/lib/page-layout-style';
 
 // 仓库没有 jsdom：mock 掉 useMediaUrls，直接调用组件函数检查返回的 React 元素。
 const media = vi.hoisted(() => ({ urls: {} as Record<string, string>, lastKeys: [] as string[][] }));
@@ -104,5 +104,13 @@ describe('verticalJustify', () => {
     expect(verticalJustify('center')).toBe('center');
     expect(verticalJustify('bottom')).toBe('flex-end');
     expect(verticalJustify('weird' as never)).toBe('center');
+  });
+});
+
+describe('headerOrder', () => {
+  it('bottom 时页头排在网格之后，top / center 在之前', () => {
+    expect(headerOrder('bottom')).toBe(2);
+    expect(headerOrder('top')).toBe(0);
+    expect(headerOrder('center')).toBe(0);
   });
 });
