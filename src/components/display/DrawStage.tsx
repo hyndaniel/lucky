@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLotteryStore } from '@/store/useStore';
 import { getRemainingSlots, resolveImagePool, resolveNamePool, sampleDistinct } from '@/lib/draw-engine';
-import { computeModuleLayout } from '@/lib/grid-layout';
+import { computeModuleLayout, DEPT_RATIO } from '@/lib/grid-layout';
+import { fitFontSize } from '@/lib/fit-text';
+import { createTextMeasurer } from '@/lib/text-measure';
 import { DEFAULT_MODULE_COUNT } from '@/lib/defaults';
 import { soundEngine } from '@/lib/sound';
 import type { RoundPhase } from '@/lib/types';
@@ -34,6 +36,7 @@ interface ModuleView {
   imageId: string | null;
   name: string | null;
   label: string | null;
+  dept: string | null;
 }
 
 // 池不足 count 时循环补足；池为空返回 []（模块显示空白 "?"）
@@ -51,6 +54,7 @@ export default function DrawStage() {
   const winners = useLotteryStore((s) => s.winners);
   const settings = useLotteryStore((s) => s.settings);
   const style = settings.moduleStyle;
+  const showDept = settings.showDept === true;
 
   const roundId = round?.id ?? '';
   const phase = round?.phase ?? null;
@@ -142,30 +146,51 @@ export default function DrawStage() {
     count: moduleCount,
     columns: style.columns,
     gap: GRID_GAP,
-    scale: Math.min(1, Math.max(0.4, style.moduleScale / 100)) || 1,
+    scale: Math.min(2, Math.max(0.4, style.moduleScale / 100)) || 1, // 0.4..2；>1 可放大，受格子与间距限制
     nameFontSize: style.nameStyle.fontSize,
     labelFontSize: style.labelStyle.fontSize,
     showName: style.showName,
     showLabel: style.showImageLabel,
+    showDept: showDept && style.showName,
   });
 
   const viewFor = (i: number): ModuleView => {
     if (!round || phase === 'idle') {
-      return { state: 'blank', rollingPart: 'image', imageId: null, name: null, label: null };
+      return { state: 'blank', rollingPart: 'image', imageId: null, name: null, label: null, dept: null };
     }
     if (rollingKind === 'image') {
       const imageId = rollingItems[i] ?? null;
-      return { state: 'rolling', rollingPart: 'image', imageId, name: null, label: imageId ? imageById.get(imageId)?.label ?? null : null };
+      return { state: 'rolling', rollingPart: 'image', imageId, name: null, label: imageId ? imageById.get(imageId)?.label ?? null : null, dept: null };
     }
     // 奖品已定格：图片固定为本轮结果
     const imageId = resultImageIds[i] ?? null;
     const winner = phase === 'completed' ? roundWinners[i] : undefined;
     const label = (imageId ? imageById.get(imageId)?.label : undefined) ?? winner?.imageLabel ?? null;
     if (rollingKind === 'name') {
-      return { state: 'rolling', rollingPart: 'name', imageId, name: rollingItems[i] ?? null, label };
+      return { state: 'rolling', rollingPart: 'name', imageId, name: rollingItems[i] ?? null, label, dept: null };
     }
-    return { state: 'revealed', rollingPart: 'name', imageId, name: winner?.name ?? null, label };
+    return { state: 'revealed', rollingPart: 'name', imageId, name: winner?.name ?? null, label, dept: winner?.dept ?? null };
   };
+
+  // 统一字号：全体模块当前显示的文字合并测算一次，所有模块共用（避免各模块各自缩小导致字号参差）。
+  // 无 canvas（jsdom 等）时 createTextMeasurer 返回 null，退回布局字号。
+  const views = Array.from({ length: moduleCount }, (_, i) => viewFor(i));
+  const textWidth = Math.max(0, layout.cardWidth - 2 * layout.padding);
+  const fitShared = (texts: (string | null)[], base: number, family: string, weight: number) => {
+    const measure = createTextMeasurer(family, weight);
+    if (!measure || base <= 0) return base;
+    return fitFontSize(texts.filter((t): t is string => !!t), textWidth, base, measure);
+  };
+  const nameFontSize = fitShared(
+    views.map((v) => v.name), layout.nameFontSize, style.nameStyle.fontFamily || settings.fontFamily || '', 700,
+  );
+  const labelFontSize = fitShared(
+    views.map((v) => v.label), layout.labelFontSize, style.labelStyle.fontFamily || settings.fontFamily || '', 500,
+  );
+  // 部门字号以统一后的名字字号为基准（约 0.7×），再按部门文字统一缩小
+  const deptFontSize = showDept
+    ? fitShared(views.map((v) => v.dept), Math.floor(nameFontSize * DEPT_RATIO), style.labelStyle.fontFamily || settings.fontFamily || '', 500)
+    : 0;
 
   const rows: number[][] = [];
   for (let i = 0; i < moduleCount; i += layout.columns) {
@@ -227,7 +252,7 @@ export default function DrawStage() {
               // 每排单独居中，最后一排不足时也居中
               <div key={r} style={{ display: 'flex', justifyContent: 'center', gap: GRID_GAP }}>
                 {row.map((i) => {
-                  const view = viewFor(i);
+                  const view = views[i];
                   return (
                     <div
                       key={i}
@@ -245,6 +270,11 @@ export default function DrawStage() {
                         label={view.label}
                         name={view.name}
                         fontFamily={settings.fontFamily}
+                        dept={view.dept}
+                        showDept={showDept}
+                        nameFontSize={nameFontSize}
+                        labelFontSize={labelFontSize}
+                        deptFontSize={deptFontSize}
                       />
                     </div>
                   );

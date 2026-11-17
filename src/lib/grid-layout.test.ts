@@ -35,7 +35,7 @@ describe('computeModuleLayout', () => {
   it('1920×800、12 个、只显示名字 40px 时的精确结果', () => {
     expect(computeModuleLayout(base)).toEqual({
       columns: 4, rows: 3, cellWidth: 468, cellHeight: 256,
-      nameFontSize: 40, labelFontSize: 0, textHeight: 60, padding: 12,
+      nameFontSize: 40, labelFontSize: 0, deptFontSize: 0, textHeight: 60, padding: 12,
       moduleSize: 172, cardWidth: 240, cardHeight: 256,
     });
   });
@@ -44,6 +44,20 @@ describe('computeModuleLayout', () => {
     const layout = computeModuleLayout({ ...base, scale: 0.5 });
     expect(layout.moduleSize).toBe(86);
     expect(layout.nameFontSize).toBe(40);
+  });
+
+  it('scale > 1 时图片区比 scale 1 更大（可越过格子名义尺寸进入间隙），并有上限', () => {
+    const one = computeModuleLayout(base);
+    const big = computeModuleLayout({ ...base, scale: 1.8 });
+    expect(big.moduleSize).toBeGreaterThan(one.moduleSize);
+    expect(big.moduleSize).toBeLessThanOrEqual(one.moduleSize + base.gap); // 不会无限放大
+    expect(computeModuleLayout({ ...base, scale: 2 }).moduleSize).toBe(big.moduleSize);
+    expect(big.cardHeight).toBe(big.moduleSize + 2 * big.padding + big.textHeight);
+  });
+
+  it('scale <= 1 的结果不受放大逻辑影响', () => {
+    expect(computeModuleLayout({ ...base, scale: 1 }).moduleSize).toBe(172);
+    expect(computeModuleLayout({ ...base, scale: 1 }).cardWidth).toBeLessThanOrEqual(468);
   });
 
   it('请求字号受格子上限约束', () => {
@@ -61,6 +75,13 @@ describe('computeModuleLayout', () => {
     const layout = computeModuleLayout({ ...base, showLabel: true });
     expect(layout.labelFontSize).toBe(22);
     expect(layout.textHeight).toBe(93); // 40×1.5 + 22×1.5
+  });
+
+  it('showDept 时为部门行预留高度（约 0.7× 名字字号）', () => {
+    const layout = computeModuleLayout({ ...base, showDept: true });
+    expect(layout.deptFontSize).toBe(28);
+    expect(layout.textHeight).toBe(60 + 42);
+    expect(computeModuleLayout({ ...base, showDept: true, showName: false }).deptFontSize).toBe(0);
   });
 
   it('columns 覆盖值生效', () => {

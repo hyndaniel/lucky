@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useRef, type CSSProperties } from 'react';
 import { useAnimate } from 'framer-motion';
 import type { ModuleLayout } from '@/lib/grid-layout';
 import type { ModuleStyle, TextStyle } from '@/lib/types';
+import { normalizeLabelPosition, shapeRadius } from '@/lib/module-style';
 
 export type PrizeModuleState = 'blank' | 'rolling' | 'revealed';
 
@@ -14,6 +15,12 @@ export interface PrizeModuleProps {
   state: PrizeModuleState;
   fontFamily?: string;          // 大屏字体；TextStyle.fontFamily 为 '' 时使用
   rollingPart?: 'image' | 'name'; // rolling 时正在变化的部分：阶段一为图片（默认），阶段二为名字（图片不动）
+  dept?: string | null;           // 部门；仅在 showDept 且 state 为 revealed 时显示在名字下方
+  showDept?: boolean;
+  // 全体模块共用的固定字号（由 DrawStage 统一测算）；缺省时用 layout 里的字号
+  nameFontSize?: number;
+  labelFontSize?: number;
+  deptFontSize?: number;
 }
 
 // 颜色一律 inline（index.css 在 .hermes-display-board 下用 !important 覆盖了若干 Tailwind 颜色类）
@@ -21,7 +28,6 @@ const BORDER_RING = 'rgba(216, 102, 50, 0.22)';
 const CARD_SHADOW = 'rgba(150, 61, 25, 0.08)';
 const PLACEHOLDER_COLOR = 'rgba(216, 102, 50, 0.28)';
 const PLACEHOLDER_BG = 'rgba(216, 102, 50, 0.05)';
-const MIN_FONT_PX = 10;
 const LINE_HEIGHT_RATIO = 1.5;
 const ROLLING_IMAGE: CSSProperties = { filter: 'blur(1px)', opacity: 0.85 };
 const ROLLING_TEXT: CSSProperties = { filter: 'blur(0.6px)', opacity: 0.75 };
@@ -37,40 +43,19 @@ function toRgba(hex: string, opacityPercent: number): string {
 interface FitLineProps {
   text: string;
   fontSize: number;
-  maxWidth: number;
   textStyle: TextStyle;
   fontFamily?: string;
   fontWeight: number;
   extraStyle?: CSSProperties;
 }
 
-// 单行文字：不换行、不省略；超出可用宽度时按比例缩小字号直到放下（最小 10px）。
-// 缩到 10px 仍放不下时不裁切，居中向卡片两侧溢出，保证文字完整可见。
-// 直接改 DOM 字号而不是 setState：每帧换名字时不额外触发重渲染
-function FitLine({ text, fontSize, maxWidth, textStyle, fontFamily, fontWeight, extraStyle }: FitLineProps) {
-  const ref = useRef<HTMLSpanElement>(null);
+// 单行文字：固定字号渲染，所有模块字号一致（字号由 DrawStage 对全体文字统一测算，不在这里逐个缩小）。
+// 仅作最后兜底：单个文字仍超出卡片宽度（如超长单词）时用省略号截断，避免撑破布局。
+function FitLine({ text, fontSize, textStyle, fontFamily, fontWeight, extraStyle }: FitLineProps) {
   const family = textStyle.fontFamily || fontFamily || undefined;
-
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.fontSize = `${fontSize}px`;
-    if (!text || maxWidth <= 0) return;
-    const width = el.scrollWidth;
-    if (width <= maxWidth) return;
-    const minSize = Math.min(fontSize, MIN_FONT_PX); // 布局给的字号本身小于 10px 时不放大
-    let size = Math.max(minSize, Math.floor((fontSize * maxWidth) / width));
-    el.style.fontSize = `${size}px`;
-    // 字形缩放不完全线性，再逐像素校正
-    while (size > minSize && el.scrollWidth > maxWidth) {
-      size -= 1;
-      el.style.fontSize = `${size}px`;
-    }
-  }, [text, fontSize, maxWidth, family]);
-
   const lineHeight = fontSize * LINE_HEIGHT_RATIO;
   return (
-    // 行高按布局字号固定：缩小字号或名字为空时都不改变卡片高度
+    // 行高按字号固定：名字为空时不改变卡片高度
     <div
       style={{
         width: '100%', height: lineHeight, lineHeight: `${lineHeight}px`, flexShrink: 0,
@@ -78,10 +63,9 @@ function FitLine({ text, fontSize, maxWidth, textStyle, fontFamily, fontWeight, 
       }}
     >
       <span
-        ref={ref}
         style={{
-          display: 'block', flexShrink: 0, fontSize, fontWeight, fontFamily: family,
-          color: textStyle.color, ...extraStyle,
+          display: 'block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis',
+          fontSize, fontWeight, fontFamily: family, color: textStyle.color, ...extraStyle,
         }}
       >
         {text}
@@ -93,6 +77,7 @@ function FitLine({ text, fontSize, maxWidth, textStyle, fontFamily, fontWeight, 
 // 抽奖模块（卡片）：方形图片区 + 图片说明 + 名字。纯展示，大屏与后台样式预览共用
 export default function PrizeModule({
   layout, imageUrl, label, name, style, state, fontFamily, rollingPart = 'image',
+  dept, showDept = false, nameFontSize: nameSize, labelFontSize: labelSize, deptFontSize: deptSize,
 }: PrizeModuleProps) {
   const [scope, animate] = useAnimate<HTMLDivElement>();
   const prevStateRef = useRef(state);
@@ -110,12 +95,27 @@ export default function PrizeModule({
     return () => controls.stop();
   }, [state, animate, scope]);
 
-  const { moduleSize, padding, cardWidth, cardHeight, nameFontSize, labelFontSize } = layout;
-  const innerWidth = cardWidth - 2 * padding;
+  const { moduleSize, padding, cardWidth, cardHeight } = layout;
+  const nameFontSize = nameSize ?? layout.nameFontSize;
+  const labelFontSize = labelSize ?? layout.labelFontSize;
+  const deptFontSize = showDept ? deptSize ?? layout.deptFontSize : 0;
   const radius = Math.max(6, Math.min(16, Math.round(moduleSize * 0.06)));
+  const imageRadius = shapeRadius(style.shape, moduleSize); // 未知形状回退 rounded
+  const labelAbove = normalizeLabelPosition(style.labelPosition) === 'above';
   const rollingImage = state === 'rolling' && rollingPart === 'image';
   const rollingName = state === 'rolling' && rollingPart === 'name';
   const src = state === 'blank' ? null : imageUrl || null;
+
+  const labelLine = style.showImageLabel && labelFontSize > 0 && (
+    <FitLine
+      text={state === 'blank' ? '' : label ?? ''}
+      fontSize={labelFontSize}
+      textStyle={style.labelStyle}
+      fontFamily={fontFamily}
+      fontWeight={500}
+      extraStyle={rollingImage ? ROLLING_TEXT : undefined}
+    />
+  );
 
   return (
     <div
@@ -130,9 +130,10 @@ export default function PrizeModule({
         boxShadow: `0 0 0 1px ${BORDER_RING}, 0 10px 28px ${CARD_SHADOW}`,
       }}
     >
+      {labelAbove && labelLine}
       <div
         style={{
-          width: moduleSize, height: moduleSize, flexShrink: 0, borderRadius: radius, overflow: 'hidden',
+          width: moduleSize, height: moduleSize, flexShrink: 0, borderRadius: imageRadius, overflow: 'hidden',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: src ? 'transparent' : PLACEHOLDER_BG,
         }}
@@ -151,27 +152,27 @@ export default function PrizeModule({
           </span>
         )}
       </div>
-      {style.showImageLabel && labelFontSize > 0 && (
-        <FitLine
-          text={state === 'blank' ? '' : label ?? ''}
-          fontSize={labelFontSize}
-          maxWidth={innerWidth}
-          textStyle={style.labelStyle}
-          fontFamily={fontFamily}
-          fontWeight={500}
-          extraStyle={rollingImage ? ROLLING_TEXT : undefined}
-        />
-      )}
+      {!labelAbove && labelLine}
       {style.showName && nameFontSize > 0 && (
         // 名字为空时保留整行高度，阶段二开始前不塌陷
         <FitLine
           text={state === 'blank' ? '' : name ?? ''}
           fontSize={nameFontSize}
-          maxWidth={innerWidth}
           textStyle={style.nameStyle}
           fontFamily={fontFamily}
           fontWeight={700}
           extraStyle={rollingName ? ROLLING_TEXT : undefined}
+        />
+      )}
+      {showDept && deptFontSize > 0 && (
+        // 部门行：始终预留高度，名字定格前后卡片尺寸不变；定格后才有文字
+        <FitLine
+          text={state === 'revealed' ? dept ?? '' : ''}
+          fontSize={deptFontSize}
+          textStyle={style.labelStyle}
+          fontFamily={fontFamily}
+          fontWeight={500}
+          extraStyle={{ opacity: 0.85 }}
         />
       )}
     </div>
