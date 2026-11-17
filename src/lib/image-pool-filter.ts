@@ -68,7 +68,7 @@ export function filterImages(
   });
 }
 
-// 把 group 写到 ids 上：只返回真正需要改的条目（已是该分组、或 id 不存在的跳过）
+// 把 group 写到 ids 上：只返回真正需要改的条目（已是该分组、或 id 不存在的跳过）。group 为 '' 即清除
 export function groupUpdates(images: PrizeImage[], ids: string[], group: string): { id: string; group: string }[] {
   const byId = new Map(images.map((img) => [img.id, img]));
   const target = group.trim();
@@ -78,4 +78,14 @@ export function groupUpdates(images: PrizeImage[], ids: string[], group: string)
     if (img && img.group !== target) updates.push({ id, group: target });
   }
   return updates;
+}
+
+// 「批量设分组」：目标分组为空时什么都不做（误点 / 输入框没填不会清掉已有分组）；清除走 clearGroupUpdates
+export function setGroupUpdates(images: PrizeImage[], ids: string[], raw: string): { id: string; group: string }[] {
+  return raw.trim() === '' ? [] : groupUpdates(images, ids, raw);
+}
+
+// 「清除分组」：显式清空选中图片的分组
+export function clearGroupUpdates(images: PrizeImage[], ids: string[]): { id: string; group: string }[] {
+  return groupUpdates(images, ids, '');
 }

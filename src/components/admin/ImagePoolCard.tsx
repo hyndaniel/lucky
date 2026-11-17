@@ -53,13 +53,14 @@ function ImagePoolCardImpl({ image, url, info, prizeName, selected, groupListId,
       </div>
       <span className="text-xs font-mono text-muted-foreground whitespace-nowrap">{formatSerial('IMG', image.serial)}</span>
       <Badge variant={info.status === 'available' ? 'secondary' : 'outline'} className="max-w-full truncate" title={text}>{text}</Badge>
-      {/* key 随已保存值变化，保存后输入框以新值重建 */}
+      {/* key 随已保存值变化，保存后输入框以新值重建；失焦或按回车保存 */}
       <Input
         key={`label:${image.label}`}
         defaultValue={image.label}
         placeholder="图片说明"
         className="h-8 text-sm w-full"
         onBlur={(e) => onEdit(image.id, { label: e.target.value })}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur(); }}
       />
       <div className="flex items-center gap-1 w-full">
         <Input
@@ -69,6 +70,7 @@ function ImagePoolCardImpl({ image, url, info, prizeName, selected, groupListId,
           placeholder="未分组"
           className="h-8 text-sm"
           onBlur={(e) => onEdit(image.id, { group: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur(); }}
         />
         <Button
           variant="ghost"

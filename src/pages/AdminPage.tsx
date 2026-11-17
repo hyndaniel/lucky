@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useLotteryStore } from "@/store/useStore";
+import { useLotteryStore, setWriteFailureGuard } from "@/store/useStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -344,12 +344,16 @@ export default function AdminPage() {
     }
   };
 
-  // 强制轮询同步
+  // 强制轮询同步。后台是唯一写入方：开启写入失败保护，避免存储写满时轮询把内存里的修改用旧存档还原
   useEffect(() => {
+    setWriteFailureGuard(true);
     const timer = setInterval(() => {
       useLotteryStore.persist.rehydrate();
     }, 1000); 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      setWriteFailureGuard(false);
+    };
   }, []);
 
   if (!isAuthenticated) {

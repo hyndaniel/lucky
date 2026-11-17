@@ -348,6 +348,19 @@ const deobfuscateData = (str: string): string => {
   }
 };
 
+// 最近一次写入是否失败。失败时内存状态比 localStorage 新：后台每秒的 rehydrate 若照常合并，
+// 会把刚做的修改（批量分组、说明等）用旧存档还原，看起来像「操作被清掉」。见 merge。
+// 只有后台窗口（唯一写入方）开启保护（setWriteFailureGuard）才会在 merge 里生效；
+// 大屏从不开启，所以大屏自己的写入失败（挂载时 setViewMode、迁移写入）不会冻结它与后台的同步
+let lastWriteFailed = false;
+let writeFailureGuard = false;
+
+// 后台窗口调用一次。关闭时同时清掉失败标记
+export function setWriteFailureGuard(enabled: boolean): void {
+  writeFailureGuard = enabled;
+  if (!enabled) lastWriteFailed = false;
+}
+
 export const STORAGE_QUOTA_ERROR = '存储空间不足，请减小 Logo 或背景图';
 
 // 写入 localStorage：先写混淆串，失败再退回明文；两次都失败也不能抛出，
@@ -371,9 +384,6 @@ export function writeStorageSafely(name: string, value: string): boolean {
   }
 }
 
-// 最近一次写入是否失败。失败时内存状态比 localStorage 新：后台每秒的 rehydrate 若照常合并，
-// 会把刚做的修改（批量分组、说明等）用旧存档还原，看起来像「操作被清掉」。见 merge
-let lastWriteFailed = false
 
 export const useLotteryStore = create<LotteryState>()(
   persist(
@@ -724,8 +734,8 @@ export const useLotteryStore = create<LotteryState>()(
       migrate: (persistedState) => migratePersistedState(persistedState) as LotteryState,
       // 每次 rehydrate 都会调用：浅合并后把设置补成完整结构，防止旧数据缺字段
       merge: (persistedState, currentState) => {
-        // 写入失败期间保留内存状态（后台是唯一写入方，内存即最新）；下一次写入成功后恢复同步
-        if (lastWriteFailed) return currentState;
+        // 后台写入失败期间保留内存状态（内存比存档新）；下一次写入成功后恢复同步。大屏不开启此保护
+        if (writeFailureGuard && lastWriteFailed) return currentState;
         const persisted = (isRecord(persistedState) ? persistedState : {}) as Partial<LotteryData>;
         return { ...currentState, ...persisted, settings: normalizeSettings(persisted.settings ?? currentState.settings) };
       },

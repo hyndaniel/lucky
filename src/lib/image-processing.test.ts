@@ -105,6 +105,10 @@ describe('MAX_IMAGE_FILE_BYTES', () => {
 });
 
 describe('图片保真参数', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it('默认长边 1920、webp 质量 0.92', () => {
     expect(DEFAULT_MAX_SIDE).toBe(1920);
     expect(OUTPUT_QUALITY).toBe(0.92);
@@ -126,7 +130,6 @@ describe('图片保真参数', () => {
     const sizes: number[][] = [];
     const file = new File([new Uint8Array(100)], 'big.jpg', { type: 'image/jpeg' });
     await prepareImageBlob(file);
-    vi.unstubAllGlobals();
     expect(sizes).toEqual([[1920, 1440]]);
     expect(toBlob).toHaveBeenCalledWith(0.92);
   });

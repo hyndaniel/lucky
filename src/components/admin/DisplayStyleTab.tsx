@@ -308,10 +308,24 @@ export function DisplayStyleTab() {
   ]);
   const nameFamily = moduleStyle.nameStyle.fontFamily || displayFont || '';
   const labelFamily = moduleStyle.labelStyle.fontFamily || displayFont || '';
-  const previewSizes = previewFontSizes(
-    layout,
-    showDept && moduleStyle.showName,
-    (weight) => createTextMeasurer(weight === 700 ? nameFamily : labelFamily, weight),
+  // 字体晚加载完成（上传字体读 IndexedDB 是异步的）后重新测算，否则预览字号停在回退字体的测量结果
+  const [fontsVersion, setFontsVersion] = useState(0);
+  useEffect(() => {
+    if (typeof document === 'undefined' || !document.fonts) return;
+    const bump = () => setFontsVersion((v) => v + 1);
+    document.fonts.addEventListener('loadingdone', bump);
+    return () => document.fonts.removeEventListener('loadingdone', bump);
+  }, []);
+  const previewShowDept = showDept && moduleStyle.showName;
+  const previewSizes = useMemo(
+    () => previewFontSizes(
+      layout,
+      previewShowDept,
+      (weight) => createTextMeasurer(weight === 700 ? nameFamily : labelFamily, weight),
+    ),
+    // fontsVersion 只用来在字体加载完成时触发重新测算
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [layout, previewShowDept, nameFamily, labelFamily, fontsVersion],
   );
   const previewGap = effectiveGap(GRID_GAP, moduleStyle.moduleScale / 100);
 

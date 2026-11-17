@@ -1,7 +1,8 @@
 import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { nanoid } from 'nanoid';
-import { ImagePlus, Loader2, Search, Trash } from 'lucide-react';
+import { ImagePlus, Loader2, Search, Trash, TriangleAlert } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,7 +21,7 @@ import { deleteMedia, putMedia } from '@/lib/media-store';
 import { labelFromFileName, MAX_IMAGE_FILE_BYTES, prepareImageBlob } from '@/lib/image-processing';
 import { getFrozenImageIds } from '@/lib/draw-engine';
 import {
-  UNGROUPED, collectGroups, countByStatus, deriveImageStatuses, filterImages, groupUpdates,
+  UNGROUPED, collectGroups, countByStatus, deriveImageStatuses, filterImages, clearGroupUpdates, setGroupUpdates,
   type ImageStatus,
 } from '@/lib/image-pool-filter';
 
@@ -38,6 +39,7 @@ export function ImagePoolTab() {
   const winners = useLotteryStore((s) => s.winners);
   const prizes = useLotteryStore((s) => s.prizes);
   const currentRound = useLotteryStore((s) => s.currentRound);
+  const showImageLabel = useLotteryStore((s) => s.settings.moduleStyle.showImageLabel);
 
   const mediaAvailable = useMediaStoreAvailable();
   const groupListId = useId();
@@ -156,12 +158,22 @@ export function ImagePoolTab() {
   }, []);
   const removeOne = useCallback((id: string) => removeImages([id]), [removeImages]);
 
+  // 以 store 当前值计算差异后逐张写入；不走 handleEdit，避免每张各弹一条 toast
+  const applyGroupUpdates = (updates: { id: string; group: string }[]) => {
+    const store = useLotteryStore.getState();
+    for (const u of updates) store.updatePrizeImage(u.id, { group: u.group });
+  };
   const handleBatchGroup = () => {
     const group = batchGroup.trim();
-    // 以 store 当前值计算差异后逐张写入（空 = 清除分组）；不走 handleEdit，避免每张各弹一条 toast
-    const store = useLotteryStore.getState();
-    for (const u of groupUpdates(store.prizeImages, selected, group)) store.updatePrizeImage(u.id, { group: u.group });
-    toast.success(group ? `已将 ${selected.length} 张图片设为分组「${group}」` : `已清除 ${selected.length} 张图片的分组`);
+    if (!group) return; // 按钮在输入为空时已禁用；这里再兜底，空输入绝不清分组
+    const updates = setGroupUpdates(useLotteryStore.getState().prizeImages, selected, group);
+    applyGroupUpdates(updates);
+    toast.success(updates.length > 0 ? `已将 ${updates.length} 张图片设为分组「${group}」` : `所选图片已在分组「${group}」，无需修改`);
+  };
+  const handleBatchClearGroup = () => {
+    const updates = clearGroupUpdates(useLotteryStore.getState().prizeImages, selected);
+    applyGroupUpdates(updates);
+    toast.success(updates.length > 0 ? `已清除 ${updates.length} 张图片的分组` : '所选图片本来就没有分组');
   };
 
   const handleClear = () => {
@@ -190,6 +202,16 @@ export function ImagePoolTab() {
   return (
     <div className="space-y-4">
       {mediaAvailable === false && <MediaUnavailableAlert />}
+
+      {!showImageLabel && (
+        <Alert data-testid="label-hidden-alert">
+          <TriangleAlert />
+          <AlertDescription className="flex flex-wrap items-center gap-2">
+            <span>大屏当前不显示图片说明，下面修改的说明不会出现在抽奖页上。</span>
+            <Button size="sm" variant="outline" onClick={() => useLotteryStore.getState().updateModuleStyle({ showImageLabel: true })}>开启显示</Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* 上传区 */}
       <div
@@ -228,7 +250,7 @@ export function ImagePoolTab() {
             disabled={busy !== null}
           />
         </div>
-        <span className="text-sm text-muted-foreground">可多选，或将图片拖到此处；单张不超过 20MB，会自动压缩（长边 1920px）。图片说明修改后立即保存，大屏需在「大屏样式」中开启「图片下方显示图片说明」才会显示</span>
+        <span className="text-sm text-muted-foreground">可多选，或将图片拖到此处；单张不超过 20MB，会自动压缩（长边 1920px）。说明在输入框中修改，回车或点击别处即保存；大屏需开启「图片下方显示图片说明」才会显示</span>
         <datalist id={groupListId}>
           {groupSuggestions.map((name) => <option key={name} value={name} />)}
         </datalist>
@@ -275,11 +297,12 @@ export function ImagePoolTab() {
           list={groupListId}
           value={batchGroup}
           onChange={(e) => setBatchGroup(e.target.value)}
-          placeholder="目标分组（留空 = 清除分组）"
+          placeholder="目标分组，如 一等奖"
           className="w-52"
           disabled={selected.length === 0}
         />
-        <Button variant="outline" size="sm" disabled={selected.length === 0} onClick={handleBatchGroup}>批量设分组</Button>
+        <Button variant="outline" size="sm" disabled={selected.length === 0 || batchGroup.trim() === ''} onClick={handleBatchGroup}>批量设分组</Button>
+        <Button variant="outline" size="sm" disabled={selected.length === 0} onClick={handleBatchClearGroup}>清除分组</Button>
         <Button variant="outline" size="sm" disabled={selected.length === 0} onClick={() => setConfirm('delete')}>
           <Trash className="w-4 h-4 mr-1" />批量删除
         </Button>
