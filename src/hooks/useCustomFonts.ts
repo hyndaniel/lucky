@@ -23,6 +23,13 @@ function release(entry: Entry): void {
   entry.url = undefined;
 }
 
+// FontFace 构造函数把 family 当 CSS font-family 描述符解析：未加引号时 `Font 2` 这类
+// 数字开头的标识符会抛 SyntaxError。统一包成带转义的字符串，与 CSS 里的同名 family 等价匹配。
+function quoteFamily(family: string): string {
+  const safe = family.replace(/[\r\n]+/g, ' ').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `'${safe}'`;
+}
+
 async function register(family: string, entry: Entry, registry: Map<string, Entry>): Promise<void> {
   try {
     const blob = await getMedia(entry.key);
@@ -32,18 +39,16 @@ async function register(family: string, entry: Entry, registry: Map<string, Entr
     // 自建 URL 让本 hook 能在字体移除或卸载时放心 revoke，不影响别处。
     const url = URL.createObjectURL(blob);
     entry.url = url;
-    const face = new FontFace(family, `url(${url})`);
+    const face = new FontFace(quoteFamily(family), `url(${url})`);
     await face.load();
-    if (entry.cancelled) {
-      // 加载期间已被移除：release 已置 cancelled，此处补清自己创建的 URL
-      URL.revokeObjectURL(url);
-      entry.url = undefined;
-      return;
-    }
+    // 加载期间已被移除：release 已 revoke 并清掉 entry.url，不会添加 FontFace
+    if (entry.cancelled) return;
     document.fonts.add(face);
     entry.face = face;
   } catch {
-    // IndexedDB 不可用、字体文件损坏等：静默放弃，下次列表变化时可重试
+    // IndexedDB 不可用、字体文件损坏等：不抛错，只在控制台留一条信号（每次失败每个 family 一条）。
+    // 条目从 registry 移除，列表内容变化时才会重试；内容不变的 rehydrate 不会重复触发。
+    if (!entry.cancelled) console.warn(`自定义字体加载失败: ${family}`);
     if (entry.url) URL.revokeObjectURL(entry.url);
     entry.url = undefined;
     if (registry.get(family) === entry) registry.delete(family);

@@ -70,10 +70,13 @@ const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 class FakeFontFace {
   static instances: FakeFontFace[] = [];
-  load = vi.fn(async () => this);
+  static loadImpl: ((face: FakeFontFace) => Promise<unknown>) | null = null;
+  load = vi.fn(async () => (FakeFontFace.loadImpl ? FakeFontFace.loadImpl(this) : this));
   family: string;
   source: string;
   constructor(family: string, source: string) {
+    // 模拟浏览器：未加引号且含数字开头标识符的 family 解析失败
+    if (!/^['"]/.test(family) && /(^|\s)\d/.test(family)) throw new SyntaxError('bad family');
     this.family = family;
     this.source = source;
     FakeFontFace.instances.push(this);
@@ -90,12 +93,15 @@ describe('useCustomFonts', () => {
   let fonts: { add: ReturnType<typeof vi.fn>; delete: ReturnType<typeof vi.fn> };
   let urlCounter = 0;
   const revoked: string[] = [];
+  let warn: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     harness.state.refs = [];
     harness.state.effects = [];
     harness.state.pending = [];
     FakeFontFace.instances = [];
+    FakeFontFace.loadImpl = null;
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     revoked.length = 0;
     urlCounter = 0;
     getMedia.mockReset();
@@ -120,7 +126,7 @@ describe('useCustomFonts', () => {
     expect(getMedia).toHaveBeenCalledWith('font-a');
     expect(FakeFontFace.instances).toHaveLength(1);
     const face = FakeFontFace.instances[0];
-    expect(face.family).toBe('My Font');
+    expect(face.family).toBe("'My Font'");
     expect(face.source).toBe('url(blob:font-1)');
     expect(face.load).toHaveBeenCalled();
     expect(fonts.add).toHaveBeenCalledWith(face);
@@ -197,6 +203,80 @@ describe('useCustomFonts', () => {
     view.rerender([font('a'), font('b')]);
     await flush();
     expect(getMedia).toHaveBeenCalledTimes(2);
+    expect(fonts.add).toHaveBeenCalledTimes(2);
+  });
+
+  it('数字开头的 family 加引号后可构造，不抛错也不告警', async () => {
+    render([font('a', 'Font 2')]);
+    await flush();
+    expect(fonts.add).toHaveBeenCalledTimes(1);
+    expect(FakeFontFace.instances[0].family).toBe("'Font 2'");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('family 含引号/反斜杠时转义', async () => {
+    render([font('a', "It's \\ x")]);
+    await flush();
+    expect(FakeFontFace.instances[0].family).toBe("'It\\'s \\\\ x'");
+  });
+
+  it('FontFace 构造抛错时不抛出、只告警一次并指明 family', async () => {
+    vi.stubGlobal(
+      'FontFace',
+      class {
+        constructor() {
+          throw new SyntaxError('boom');
+        }
+      },
+    );
+    expect(() => render([font('a', 'Bad Family')])).not.toThrow();
+    await flush();
+    expect(fonts.add).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('自定义字体加载失败: Bad Family');
+    expect(revoked).toEqual(['blob:font-1']);
+  });
+
+  it('getMedia reject 一次后，内容相同的新数组不会重试（依赖是原始值）', async () => {
+    getMedia.mockRejectedValueOnce(new Error('no idb'));
+    const view = render([font('a')]);
+    await flush();
+    view.rerender([font('a')]);
+    await flush();
+    expect(getMedia).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('自定义字体加载失败: Family a');
+  });
+
+  it('face.load() 期间被移除：不添加 FontFace，并 revoke URL，且不告警', async () => {
+    let finish!: () => void;
+    FakeFontFace.loadImpl = () => new Promise<void>((resolve) => (finish = resolve));
+    const view = render([font('a')]);
+    await flush();
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    view.rerender([]);
+    expect(revoked).toEqual(['blob:font-1']);
+    finish();
+    await flush();
+    expect(fonts.add).not.toHaveBeenCalled();
+    expect(fonts.delete).not.toHaveBeenCalled();
+    expect(revoked).toEqual(['blob:font-1']);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('face.load() reject：revoke URL、清除登记，列表变化后可重试', async () => {
+    FakeFontFace.loadImpl = () => Promise.reject(new Error('corrupt'));
+    const view = render([font('a')]);
+    await flush();
+    expect(fonts.add).not.toHaveBeenCalled();
+    expect(revoked).toEqual(['blob:font-1']);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('自定义字体加载失败: Family a');
+
+    FakeFontFace.loadImpl = null;
+    view.rerender([font('a'), font('b')]);
+    await flush();
+    expect(getMedia).toHaveBeenCalledTimes(3);
     expect(fonts.add).toHaveBeenCalledTimes(2);
   });
 });
