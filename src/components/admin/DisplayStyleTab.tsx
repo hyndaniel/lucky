@@ -298,12 +298,12 @@ export function DisplayStyleTab() {
   // 预览与大屏同一套：同样的格间距、部门行高度、统一字号（对样例文字测算，不再被省略号截断）
   const layout = useMemo(() => computeModuleLayout({
     containerWidth: PREVIEW_WIDTH, containerHeight: PREVIEW_HEIGHT, count: 1, columns: 0, gap: GRID_GAP,
-    scale: moduleStyle.moduleScale / 100,
+    scale: moduleStyle.moduleScale / 100, shape: moduleStyle.shape,
     nameFontSize: moduleStyle.nameStyle.fontSize, labelFontSize: moduleStyle.labelStyle.fontSize,
     showName: moduleStyle.showName, showLabel: moduleStyle.showImageLabel,
     showDept: showDept && moduleStyle.showName,
   }), [
-    moduleStyle.moduleScale, moduleStyle.nameStyle.fontSize, moduleStyle.labelStyle.fontSize,
+    moduleStyle.moduleScale, moduleStyle.shape, moduleStyle.nameStyle.fontSize, moduleStyle.labelStyle.fontSize,
     moduleStyle.showName, moduleStyle.showImageLabel, showDept,
   ]);
   const nameFamily = moduleStyle.nameStyle.fontFamily || displayFont || '';

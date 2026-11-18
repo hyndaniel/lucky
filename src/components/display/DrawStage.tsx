@@ -144,7 +144,7 @@ export default function DrawStage() {
     return () => observer.disconnect();
   }, []);
 
-  const scale = Math.min(2, Math.max(0.4, style.moduleScale / 100)) || 1; // 0.4..2；>1 真实放大，可溢出格子（上限见 grid-layout）
+  const scale = Math.min(2, Math.max(0.4, style.moduleScale / 100)) || 1; // 0.4..2；>1 时格间距收到 0、卡片撑满格子，网格不超出容器（见 grid-layout）
   const gap = effectiveGap(GRID_GAP, scale);
   const layout = computeModuleLayout({
     containerWidth: size.width,
@@ -153,6 +153,7 @@ export default function DrawStage() {
     columns: style.columns,
     gap: GRID_GAP,
     scale,
+    shape: style.shape,
     nameFontSize: style.nameStyle.fontSize,
     labelFontSize: style.labelStyle.fontSize,
     showName: style.showName,
@@ -288,7 +289,8 @@ export default function DrawStage() {
         )}
       </header>
 
-      <div ref={gridRef} style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%' }}>
+      {/* overflow: hidden 仅作兜底，网格本身（MAX_OVERFLOW = 1）不会超出此区域 */}
+      <div ref={gridRef} style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%', overflow: 'hidden' }}>
         {size.width > 0 && size.height > 0 && moduleCount > 0 && (
           // 绝对定位：内容不反过来影响测得的容器尺寸
           <div

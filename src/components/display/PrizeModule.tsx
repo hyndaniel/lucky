@@ -2,7 +2,7 @@ import { useEffect, useRef, type CSSProperties } from 'react';
 import { useAnimate } from 'framer-motion';
 import type { ModuleLayout } from '@/lib/grid-layout';
 import type { ModuleStyle, TextStyle } from '@/lib/types';
-import { normalizeLabelPosition, shapeRadius } from '@/lib/module-style';
+import { cardRadius, imageRadius, normalizeLabelPosition, normalizeShape } from '@/lib/module-style';
 
 export type PrizeModuleState = 'blank' | 'rolling' | 'revealed';
 
@@ -100,8 +100,7 @@ export default function PrizeModule({
   const nameFontSize = nameSize ?? layout.nameFontSize;
   const labelFontSize = labelSize ?? layout.labelFontSize;
   const deptFontSize = showDept ? deptSize ?? layout.deptFontSize : 0;
-  const radius = Math.max(6, Math.min(16, Math.round(moduleSize * 0.06)));
-  const imageRadius = shapeRadius(style.shape, moduleSize); // 未知形状回退 rounded
+  const isCircle = normalizeShape(style.shape) === 'circle'; // 未知形状回退 rounded
   const labelAbove = normalizeLabelPosition(style.labelPosition) === 'above';
   const rollingImage = state === 'rolling' && rollingPart === 'image';
   const rollingName = state === 'rolling' && rollingPart === 'name';
@@ -125,9 +124,10 @@ export default function PrizeModule({
       style={{
         width: cardWidth, height: cardHeight, padding, boxSizing: 'border-box', flexShrink: 0,
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        // 无图片区时卡片尺寸不变，文字整体垂直居中
-        justifyContent: showImage ? undefined : 'center',
-        borderRadius: radius + Math.round(padding / 2),
+        // 无图片区时卡片尺寸不变，文字整体垂直居中；圆形卡片内容恒居中（内容区为圆的内接正方形）
+        justifyContent: showImage && !isCircle ? undefined : 'center',
+        // 模块外形作用于卡片本身（圆形时 layout 已保证卡片为正方形）
+        borderRadius: cardRadius(style.shape, moduleSize, padding),
         background: toRgba(style.backgroundColor, style.backgroundOpacity),
         // 细边框用 box-shadow 画，不占布局尺寸
         boxShadow: `0 0 0 1px ${BORDER_RING}, 0 10px 28px ${CARD_SHADOW}`,
@@ -137,7 +137,7 @@ export default function PrizeModule({
       {showImage && (
         <div
           style={{
-            width: moduleSize, height: moduleSize, flexShrink: 0, borderRadius: imageRadius, overflow: 'hidden',
+            width: moduleSize, height: moduleSize, flexShrink: 0, borderRadius: imageRadius(moduleSize), overflow: 'hidden',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: src ? 'transparent' : PLACEHOLDER_BG,
           }}
