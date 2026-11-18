@@ -25,6 +25,9 @@ const MAX_OVERFLOW = 1.6;
 // 大屏模块网格的格间距（px）；后台预览用同一个值
 export const GRID_GAP = 20;
 export const DEPT_RATIO = 0.7; // 部门字号 / 名字字号
+const LINE_HEIGHT_RATIO = 1.25; // 文字行高系数（与 PrizeModule 的 FitLine 保持一致）
+// 卡片宽度相对图片区的系数：越接近 1 卡片越方正、横向留白越少
+const CARD_WIDTH_RATIO = 1.12;
 
 export function getGridColumns(count: number, override = 0): number {
   if (count <= 0) return 1;
@@ -54,15 +57,18 @@ export function computeModuleLayout(input: ModuleLayoutInput): ModuleLayout {
   const cellWidth = Math.max(0, Math.floor((containerWidth - gap * (columns - 1)) / columns));
   const cellHeight = Math.max(0, Math.floor((containerHeight - gap * (rows - 1)) / rows));
 
+  // 文字区按格子比例设上限：name/label 的高度占比压低（0.2→0.14、0.14→0.10），
+  // 让方形图片区成为卡片主体，减少瘦高卡片与横向留白
   const nameFontSize = input.showName
-    ? Math.floor(Math.min(input.nameFontSize, cellHeight * 0.2, cellWidth * 0.16))
+    ? Math.floor(Math.min(input.nameFontSize, cellHeight * 0.14, cellWidth * 0.16))
     : 0;
   const labelFontSize = input.showLabel
-    ? Math.floor(Math.min(input.labelFontSize, cellHeight * 0.14, cellWidth * 0.12))
+    ? Math.floor(Math.min(input.labelFontSize, cellHeight * 0.1, cellWidth * 0.12))
     : 0;
 
   const deptFontSize = input.showDept && nameFontSize > 0 ? Math.floor(nameFontSize * DEPT_RATIO) : 0;
-  const textHeight = Math.floor(nameFontSize * 1.5 + labelFontSize * 1.5 + deptFontSize * 1.5);
+  // 行高 1.5→1.25：文字区整体收窄，卡片更方正
+  const textHeight = Math.floor((nameFontSize + labelFontSize + deptFontSize) * LINE_HEIGHT_RATIO);
   const padding = Math.floor(clamp(Math.min(cellWidth, cellHeight) * 0.05, 4, 16));
 
   const fitSize = Math.min(cellWidth - 2 * padding, cellHeight - 2 * padding - textHeight);
@@ -70,13 +76,13 @@ export function computeModuleLayout(input: ModuleLayoutInput): ModuleLayout {
   let scaledSize = fitSize * scale;
   if (scale > 1) {
     const boundH = Math.floor((containerHeight * MAX_OVERFLOW - gap * (rows - 1)) / rows) - 2 * padding - textHeight;
-    const boundW = Math.floor(((containerWidth * MAX_OVERFLOW - gap * (columns - 1)) / columns) / 1.4);
+    const boundW = Math.floor(((containerWidth * MAX_OVERFLOW - gap * (columns - 1)) / columns) / CARD_WIDTH_RATIO);
     scaledSize = Math.max(fitSize, Math.min(scaledSize, boundH, boundW));
   }
   const moduleSize = Math.max(MIN_MODULE_SIZE, Math.floor(scaledSize));
 
-  // 卡片宽度：放大后可超出格子宽度
-  const cardWidth = Math.floor(Math.max(moduleSize + 2 * padding, moduleSize * 1.4));
+  // 卡片宽度：略宽于图片区（留文字边距），放大后可超出格子宽度
+  const cardWidth = Math.floor(Math.max(moduleSize + 2 * padding, moduleSize * CARD_WIDTH_RATIO));
   const cardWidthCapped = scale > 1 ? cardWidth : Math.min(cellWidth, cardWidth);
   const cardHeight = moduleSize + 2 * padding + textHeight;
 

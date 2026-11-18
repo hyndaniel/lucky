@@ -35,22 +35,22 @@ describe('computeModuleLayout', () => {
   it('1920×800、12 个、只显示名字 40px 时的精确结果', () => {
     expect(computeModuleLayout(base)).toEqual({
       columns: 4, rows: 3, cellWidth: 468, cellHeight: 256,
-      nameFontSize: 40, labelFontSize: 0, deptFontSize: 0, textHeight: 60, padding: 12,
-      moduleSize: 172, cardWidth: 240, cardHeight: 256, slotWidth: 468, slotHeight: 256,
+      nameFontSize: 35, labelFontSize: 0, deptFontSize: 0, textHeight: 43, padding: 12,
+      moduleSize: 189, cardWidth: 213, cardHeight: 256, slotWidth: 468, slotHeight: 256,
     });
   });
 
   it('scale 0.5 时图片区减半，字号不变', () => {
     const layout = computeModuleLayout({ ...base, scale: 0.5 });
-    expect(layout.moduleSize).toBe(86);
-    expect(layout.nameFontSize).toBe(40);
+    expect(layout.moduleSize).toBe(94);
+    expect(layout.nameFontSize).toBe(35);
   });
 
   it('scale > 1 真正放大：200% 至少是 100% 的 1.5 倍，且不同档位有区别（无死区）', () => {
     const one = computeModuleLayout(base).moduleSize;
     const m = (scale: number) => computeModuleLayout({ ...base, scale }).moduleSize;
     expect(m(2)).toBeGreaterThanOrEqual(one * 1.5);
-    expect(m(2)).toBeGreaterThanOrEqual(m(1.8) + 10); // 1.8 与 2 之间无死区
+    expect(m(2)).toBeGreaterThan(m(1.8)); // 1.8 与 2 之间无死区（卡片更方正后放大更早触顶，增量变小但仍单调）
     expect(m(1.5)).toBeGreaterThan(m(1.2));
     expect(m(1.8)).toBeGreaterThan(m(1.5));
     expect(m(1.2)).toBeGreaterThan(one);
@@ -90,12 +90,12 @@ describe('computeModuleLayout', () => {
   });
 
   it('scale <= 1 的结果不受放大逻辑影响', () => {
-    expect(computeModuleLayout({ ...base, scale: 1 }).moduleSize).toBe(172);
+    expect(computeModuleLayout({ ...base, scale: 1 }).moduleSize).toBe(189);
     expect(computeModuleLayout({ ...base, scale: 1 }).cardWidth).toBeLessThanOrEqual(468);
   });
 
   it('请求字号受格子上限约束', () => {
-    expect(computeModuleLayout({ ...base, nameFontSize: 120 }).nameFontSize).toBe(51);
+    expect(computeModuleLayout({ ...base, nameFontSize: 120 }).nameFontSize).toBe(35);
   });
 
   it('58 个（10 列 6 行）在 1920×1000 下名字仍可读', () => {
@@ -108,13 +108,13 @@ describe('computeModuleLayout', () => {
   it('同时显示名字与说明时文字区高度合计', () => {
     const layout = computeModuleLayout({ ...base, showLabel: true });
     expect(layout.labelFontSize).toBe(22);
-    expect(layout.textHeight).toBe(93); // 40×1.5 + 22×1.5
+    expect(layout.textHeight).toBe(71); // (35 + 22) × 1.25
   });
 
   it('showDept 时为部门行预留高度（约 0.7× 名字字号）', () => {
     const layout = computeModuleLayout({ ...base, showDept: true });
-    expect(layout.deptFontSize).toBe(28);
-    expect(layout.textHeight).toBe(60 + 42);
+    expect(layout.deptFontSize).toBe(24);
+    expect(layout.textHeight).toBe(Math.floor((35 + 24) * 1.25));
     expect(computeModuleLayout({ ...base, showDept: true, showName: false }).deptFontSize).toBe(0);
   });
 

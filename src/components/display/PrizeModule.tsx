@@ -29,7 +29,7 @@ const BORDER_RING = 'rgba(216, 102, 50, 0.22)';
 const CARD_SHADOW = 'rgba(150, 61, 25, 0.08)';
 const PLACEHOLDER_COLOR = 'rgba(216, 102, 50, 0.28)';
 const PLACEHOLDER_BG = 'rgba(216, 102, 50, 0.05)';
-const LINE_HEIGHT_RATIO = 1.5;
+const LINE_HEIGHT_RATIO = 1.25; // 与 grid-layout 的 textHeight 计算保持一致
 const ROLLING_IMAGE: CSSProperties = { filter: 'blur(1px)', opacity: 0.85 };
 const ROLLING_TEXT: CSSProperties = { filter: 'blur(0.6px)', opacity: 0.75 };
 
