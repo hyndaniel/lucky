@@ -1,292 +1,22 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLotteryStore } from "@/store/useStore";
-import { cn } from "@/lib/utils";
-import bgImg from "@/assets/bg.jpg";
-import confetti from "canvas-confetti";
-import { Maximize2, Settings, ChevronLeft, ChevronRight } from "lucide-react";
+import hermesLogo from "@/assets/hermes-logo.jpg";
+import { Maximize2, Settings } from "lucide-react";
+import DrawStage from "@/components/display/DrawStage";
+import PageDecorImage from "@/components/display/PageDecorImage";
+import { useCustomFonts } from "@/hooks/useCustomFonts";
+import { textBlockStyle, verticalJustify } from "@/lib/page-layout-style";
 
-interface RollingBoardProps {
-  isRolling: boolean;
-  candidates: { id: string; name: string; dept: string }[];
-  currentWinners: { id: string; name: string; dept: string }[]; // 中奖者（定格显示）
-}
-
-// 混淆名字的生成器（用于滚动动画）- 仅姓名
-const generateMockNames = (candidates: any[], count: number) => {
-  if (candidates.length === 0) return Array(count).fill({ name: "???" });
-  return Array.from({ length: count }).map(() => {
-    return candidates[Math.floor(Math.random() * candidates.length)];
-  });
-};
-
-export default function RollingBoard({ isRolling, candidates, currentWinners }: RollingBoardProps) {
-  const [displayNames, setDisplayNames] = useState(generateMockNames(candidates, 12));
-  const [isAnimating, setIsAnimating] = useState(false);
+export default function RollingBoard() {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const animationRef = useRef<number>(0);
-  const phaseRef = useRef<'idle' | 'accelerating' | 'running' | 'decelerating'>('idle');
-  const speedRef = useRef(0);
-  const lastUpdateRef = useRef(0);
-  const candidatesRef = useRef(candidates);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const { currentPrizeId, prizes, settings, viewMode } = useLotteryStore();
-  const currentPrize = prizes.find(p => p.id === currentPrizeId);
-  const scrollMode = settings.scrollMode || 'none';
-
-  const [currentPage, setCurrentPage] = useState(0);
-  const winnersPerPage = settings.winnersPerPage || 24;
-
-  // 保持 candidates 引用最新
-  useEffect(() => {
-    candidatesRef.current = candidates;
-  }, [candidates]);
-
-  // 当滚动状态或中奖名单发生改变时重置滚动位置
-  const winnersKey = JSON.stringify(currentWinners.map(w => w.id));
-
-  useEffect(() => {
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-    }
-  }, [isRolling, winnersKey]);
-
-  // 自动平缓向上滚动中奖名单（类似电影结尾谢幕名单，防止遮挡且不使用自动翻页）
-  useEffect(() => {
-    const showWinners = !isAnimating && !isRolling && currentWinners.length > 0;
-    const container = scrollContainerRef.current;
-    
-    console.log("AutoScroll Checking State:", {
-      showWinners,
-      isAnimating,
-      isRolling,
-      winnersLength: currentWinners.length,
-      hasContainer: !!container,
-      scrollHeight: container?.scrollHeight,
-      clientHeight: container?.clientHeight
-    });
-
-    if (!showWinners || !container || scrollMode !== 'scroll') return;
-
-    let scrollIntervalId: any;
-    let startTimeoutId: any;
-    let pauseTimeoutId: any;
-    let scrollBackTimeoutId: any;
-    let isPaused = false;
-
-    const startScroll = () => {
-      // 检查是否超出容器高度。如果在首屏渲染完前为 0，我们在 interval 中动态适配
-      scrollIntervalId = setInterval(() => {
-        if (isPaused) return;
-
-        // 如果渲染尚未彻底完成（比如高度还没算对），我们静默等待不退出，直到高度变大
-        if (container.scrollHeight <= container.clientHeight) {
-          return;
-        }
-
-        // 滚动到底部（留有 3 像素偏差）
-        if (container.scrollTop + container.clientHeight >= container.scrollHeight - 3) {
-          isPaused = true;
-          clearInterval(scrollIntervalId);
-
-          // 停留在底部 3 秒，然后平滑滚回顶部
-          pauseTimeoutId = setTimeout(() => {
-            container.scrollTo({ top: 0, behavior: 'smooth' });
-            
-            // 等待 1.5 秒滚回顶部的动画执行完成，重置并重新启动滚动
-            scrollBackTimeoutId = setTimeout(() => {
-              isPaused = false;
-              startScroll();
-            }, 1500);
-          }, 3000);
-        } else {
-          container.scrollTop += 1; // 每次前移 1 像素，顺滑稳健
-        }
-      }, 30); // 30 毫秒一帧，约 33 FPS，保证流畅性与极低的 CPU/GPU 负载
-    };
-
-    // 停留 3 秒再开始滚动，让观众和主持看清首屏
-    startTimeoutId = setTimeout(() => {
-      startScroll();
-    }, 3000);
-
-    return () => {
-      clearInterval(scrollIntervalId);
-      clearTimeout(startTimeoutId);
-      clearTimeout(pauseTimeoutId);
-      clearTimeout(scrollBackTimeoutId);
-    };
-  }, [isAnimating, isRolling, winnersKey]);
-
-  // 滚动动画逻辑（带加速和减速）
-  useEffect(() => {
-    const MIN_SPEED = 2;      // 初始速度：每秒2次
-    const MAX_SPEED = 12;     // 最大速度：每秒12次（约83ms一次，肉眼可见）
-    const ACCEL_DURATION = 1000;  // 加速时间：1秒
-    const DECEL_DURATION = 1500;  // 减速时间：1.5秒
-
-    if (isRolling && phaseRef.current === 'idle') {
-      // 开始动画：进入加速阶段
-      phaseRef.current = 'accelerating';
-      setIsAnimating(true);
-      speedRef.current = MIN_SPEED;
-      lastUpdateRef.current = Date.now();
-
-      const startTime = Date.now();
-      let decelStartTime = 0;
-      let decelStartSpeed = MAX_SPEED;
-
-      const update = () => {
-        const now = Date.now();
-
-        // 根据当前阶段计算速度
-        if (phaseRef.current === 'accelerating') {
-          const elapsed = now - startTime;
-          if (elapsed < ACCEL_DURATION) {
-            // easeOut 加速曲线
-            const progress = elapsed / ACCEL_DURATION;
-            speedRef.current = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * (1 - Math.pow(1 - progress, 2));
-          } else {
-            phaseRef.current = 'running';
-            speedRef.current = MAX_SPEED;
-          }
-        } else if (phaseRef.current === 'decelerating') {
-          if (decelStartTime === 0) {
-            decelStartTime = now;
-            decelStartSpeed = speedRef.current;
-          }
-          const elapsed = now - decelStartTime;
-          if (elapsed < DECEL_DURATION) {
-            // easeOut 减速曲线
-            const progress = elapsed / DECEL_DURATION;
-            speedRef.current = decelStartSpeed * Math.pow(1 - progress, 2);
-          } else {
-            // 动画结束
-            phaseRef.current = 'idle';
-            setIsAnimating(false);
-            cancelAnimationFrame(animationRef.current);
-            return;
-          }
-        }
-
-        // 根据当前速度决定是否更新名字
-        const interval = 1000 / Math.max(speedRef.current, 0.5);
-        if (now - lastUpdateRef.current >= interval) {
-          setDisplayNames(generateMockNames(candidatesRef.current, 12));
-          lastUpdateRef.current = now;
-        }
-
-        animationRef.current = requestAnimationFrame(update);
-      };
-
-      animationRef.current = requestAnimationFrame(update);
-    } else if (!isRolling && (phaseRef.current === 'accelerating' || phaseRef.current === 'running')) {
-      // 用户停止：进入减速阶段
-      phaseRef.current = 'decelerating';
-    }
-
-    return () => {
-      if (phaseRef.current === 'idle') {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [isRolling]);
-
-  // 如果动画完全停止且有中奖者，显示中奖者
-  const showWinners = !isAnimating && !isRolling && currentWinners.length > 0;
-
-  const totalPages = Math.ceil(currentWinners.length / winnersPerPage);
-
-  const currentPageWinners = scrollMode === 'page'
-    ? currentWinners.slice(currentPage * winnersPerPage, (currentPage + 1) * winnersPerPage)
-    : currentWinners;
-
-  const layoutBaseCount = scrollMode === 'page' ? winnersPerPage : currentWinners.length;
-
-  const winnerNameClass =
-    layoutBaseCount > 40
-      ? "text-lg md:text-xl"
-      : layoutBaseCount > 24
-        ? "text-xl md:text-2xl"
-        : layoutBaseCount > 12
-          ? "text-2xl md:text-3xl"
-          : "text-4xl md:text-5xl";
-  const winnerCardPadding =
-    layoutBaseCount > 40
-      ? "p-4"
-      : layoutBaseCount > 24
-        ? "p-5"
-        : "p-8";
-  const winnerCardMinWidth =
-    layoutBaseCount > 40
-      ? 140
-      : layoutBaseCount > 24
-        ? 160
-        : 220;
-
-  // 当中奖名单改变时，重置当前页码
-  useEffect(() => {
-    setCurrentPage(0);
-  }, [winnersKey]);
-
-  // 演示翻页模式的键盘/翻页笔控制
-  useEffect(() => {
-    if (!showWinners || scrollMode !== 'page') return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 避免输入框冲突
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
-
-      if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") {
-        e.preventDefault();
-        setCurrentPage(prev => Math.min(prev + 1, totalPages - 1));
-      } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
-        e.preventDefault();
-        setCurrentPage(prev => Math.max(prev - 1, 0));
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showWinners, scrollMode, totalPages]);
-
-  // 监听中奖展示，触发撒花特效
-  useEffect(() => {
-    if (showWinners) {
-        // 从左右两侧发射礼花
-        const end = Date.now() + 3000;
-        const colors = ['#FFD700', '#FF4500', '#FFFFFF'];
-        let animationId: number;
-
-        (function frame() {
-            confetti({
-                particleCount: 3,
-                angle: 60,
-                spread: 55,
-                origin: { x: 0, y: 0.8 },
-                colors: colors
-            });
-            confetti({
-                particleCount: 3,
-                angle: 120,
-                spread: 55,
-                origin: { x: 1, y: 0.8 },
-                colors: colors
-            });
-
-            if (Date.now() < end) {
-                animationId = requestAnimationFrame(frame);
-            }
-        }());
-
-        return () => {
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-            }
-        };
-    }
-  }, [showWinners]);
+  const { prizes, settings, viewMode } = useLotteryStore();
+  // 未上传背景图时使用主题的暖白背景；上传后直接使用用户配置的图片。
+  const backgroundImage = settings.backgroundImage || '';
+  // 注册已上传字体，让大屏能用页面排版 / 模块样式里选的自定义 family
+  useCustomFonts(settings.fonts);
+  const { welcomeLayout, prizeLayout } = settings;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -298,11 +28,14 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
   }, []);
 
   return (
-    <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden">
+    <div
+      className="hermes-display-board relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
+      style={{ fontFamily: settings.fontFamily || undefined }}
+    >
       {/* Background with overlay */}
       <div 
-        className="absolute inset-0 bg-cover bg-center z-0" 
-        style={{ backgroundImage: `url(${bgImg})` }}
+        className="hermes-background absolute inset-0 bg-cover bg-center z-0"
+        style={backgroundImage ? { backgroundImage: `url("${backgroundImage}")` } : undefined}
       >
         <div className="absolute inset-0 bg-gradient-to-tr from-black via-zinc-950/98 to-black" />
         
@@ -334,12 +67,13 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.04 }}
               transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-              className="flex flex-col items-center justify-center text-center p-8 relative"
+              className="relative flex h-full w-full flex-col items-center p-8"
+              style={{ justifyContent: verticalJustify(welcomeLayout.verticalAlign) }}
             >
               {/* Golden circular backdrop glow */}
-              <div className="absolute w-[500px] h-[500px] bg-gradient-to-tr from-yellow-500/10 to-transparent blur-[120px] rounded-full pointer-events-none -z-10" />
+              <div className="absolute left-1/2 top-1/2 -z-10 h-[500px] w-[500px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-tr from-yellow-500/10 to-transparent blur-[120px] pointer-events-none" />
 
-              {settings.logo && (
+              {(settings.logo || hermesLogo) && (
                 <motion.div
                   initial={{ y: 30, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
@@ -348,30 +82,38 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
                 >
                   <div className="absolute inset-0 bg-yellow-500/15 blur-2xl rounded-full group-hover:bg-yellow-500/25 transition-all duration-700 pointer-events-none" />
                   <img
-                    src={settings.logo}
+                    src={settings.logo || hermesLogo}
                     alt="Logo"
                     className="max-h-36 md:max-h-48 w-auto relative drop-shadow-[0_4px_30px_rgba(255,215,0,0.25)] transition-transform duration-700 group-hover:scale-105"
                   />
                 </motion.div>
               )}
-              
+
               <motion.div
                 initial={{ y: 30, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4 }}
-                className="relative"
+                className="relative w-full"
               >
-                <h2 className="text-yellow-500/90 text-2xl md:text-4xl font-cinzel tracking-[0.4em] uppercase mb-4 drop-shadow-[0_0_15px_rgba(234,179,8,0.25)] font-bold">
-                  {settings.welcomeSubtitle || "Welcome"}
+                {/* 颜色 / 字号 / 字体 / 对齐一律 inline：.hermes-display-board 会用 !important 覆盖 Tailwind 颜色类 */}
+                <h2
+                  style={{ margin: '0 0 0.4em', fontWeight: 700, letterSpacing: '0.4em', ...textBlockStyle(welcomeLayout.subtitle) }}
+                >
+                  {settings.welcomeSubtitle || "BONDING"}
                 </h2>
-                
+
                 {/* Horizontal Divider Line */}
                 <div className="w-32 h-[1px] bg-gradient-to-r from-transparent via-yellow-500/60 to-transparent mx-auto my-6" />
 
-                <h1 className="text-6xl md:text-9xl font-black text-white font-cinzel tracking-wider drop-shadow-[0_0_40px_rgba(255,215,0,0.5)] leading-none select-none bg-gradient-to-b from-white via-white to-amber-200 bg-clip-text text-transparent py-2">
+                <h1
+                  className="select-none"
+                  style={{ margin: 0, fontWeight: 900, lineHeight: 1.1, padding: '0.1em 0', ...textBlockStyle(welcomeLayout.title) }}
+                >
                   {settings.welcomeTitle || "ANNUAL PARTY"}
                 </h1>
               </motion.div>
+
+              <PageDecorImage decor={welcomeLayout.decor} />
             </motion.div>
           )}
 
@@ -383,13 +125,16 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.1 }}
               transition={{ duration: 0.8, ease: "easeOut" }}
-              className="w-full max-w-7xl px-8 flex flex-col items-center"
+              className="relative flex h-full w-full flex-col items-center px-8 py-8"
+              style={{ justifyContent: verticalJustify(prizeLayout.verticalAlign) }}
             >
+              <div className="flex w-full max-w-7xl flex-col items-center">
               <motion.h2
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2 }}
-                className="text-yellow-500 text-3xl md:text-5xl font-cinzel tracking-[0.3em] uppercase mb-12 drop-shadow-[0_0_20px_rgba(255,215,0,0.5)]"
+                className="mb-12 w-full"
+                style={{ margin: '0 0 3rem', fontWeight: 700, letterSpacing: '0.15em', ...textBlockStyle(prizeLayout.title) }}
               >
                 {settings.prizePageTitle || "今日奖项"}
               </motion.h2>
@@ -404,6 +149,13 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
                   >
                     <div className="absolute inset-0 bg-gradient-to-br from-yellow-600/30 to-red-900/40 blur-2xl rounded-3xl group-hover:blur-3xl transition-all" />
                     <div className="relative bg-black/60 backdrop-blur-md border-2 border-yellow-500/40 p-8 rounded-3xl flex flex-col items-center justify-center text-center hover:border-yellow-500/80 transition-all shadow-[0_0_40px_rgba(255,215,0,0.15)] min-h-[280px]">
+                      {prize.image && (
+                        <img
+                          src={prize.image}
+                          alt={prize.name}
+                          className="mb-5 h-28 w-full rounded-2xl object-contain bg-black/20"
+                        />
+                      )}
                       <div className="text-4xl md:text-5xl font-bold text-white font-cinzel mb-3 drop-shadow-lg">{prize.name}</div>
                       <div className="text-yellow-400 text-2xl font-bold mb-4">× {prize.count} 名</div>
                       {prize.description && (
@@ -417,186 +169,21 @@ export default function RollingBoard({ isRolling, candidates, currentWinners }: 
                   </motion.div>
                 ))}
               </div>
+              </div>
+              <PageDecorImage decor={prizeLayout.decor} />
             </motion.div>
           )}
 
-          {/* 模式 3: 抽奖页 */}
+          {/* 模式 3: 抽奖页（两阶段：奖品滚动 → 名字滚动） */}
           {viewMode === 'lottery' && (
             <motion.div
               key="lottery"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="w-full max-w-[90vw] h-[85vh] px-4 flex flex-col items-center justify-between gap-6"
+              className="w-full h-full"
             >
-              <style dangerouslySetInnerHTML={{__html: `
-                .no-scrollbar::-webkit-scrollbar {
-                  display: none;
-                }
-              `}} />
-
-              {/* Title / Prize Info (置顶且固定，防止滚动遮挡) */}
-              <div className="text-center shrink-0">
-                <h2 className="text-gold-400 text-xl md:text-2xl font-cinzel tracking-[0.3em] uppercase mb-1 text-yellow-500 drop-shadow-[0_0_15px_rgba(234,179,8,0.3)] font-semibold">
-                  {settings.title}
-                </h2>
-                <h1 className="text-5xl md:text-7xl font-cinzel font-black text-white drop-shadow-[0_0_30px_rgba(255,215,0,0.4)] tracking-wide">
-                  {currentPrize?.name || "Ready"}
-                </h1>
-                <div className="mt-3 flex items-center justify-center gap-2 text-white/90">
-                  <span className="text-base font-sans tracking-wide">本轮抽取: <span className="text-yellow-400 font-extrabold text-2xl drop-shadow-[0_0_10px_rgba(250,204,21,0.5)] font-mono">{currentPrize?.count}</span> 人</span>
-                </div>
-                <div className="w-64 h-[1px] bg-gradient-to-r from-transparent via-yellow-500/40 to-transparent mx-auto mt-4 blur-[0.5px]" />
-              </div>
-
-              {/* Rolling Area / Winner Display (中奖者列表滚动容器) */}
-              <div 
-                ref={scrollContainerRef}
-                className={cn(
-                  "w-full flex-1 min-h-0 overflow-y-auto no-scrollbar relative py-2",
-                  !showWinners && "flex items-center justify-center perspective-1000"
-                )}
-                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-              >
-                <AnimatePresence mode="wait">
-                  {showWinners ? (
-                    // Winner Display
-                    <div className="w-full relative h-full">
-                      {scrollMode === 'page' ? (
-                        <AnimatePresence mode="wait">
-                          <motion.div
-                            key={currentPage}
-                            initial={{ opacity: 0, scale: 0.98 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 1.02 }}
-                            transition={{ duration: 0.25, ease: "easeInOut" }}
-                            className="w-full"
-                          >
-                            <div
-                              className="grid gap-4 w-full"
-                              style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${winnerCardMinWidth}px, 1fr))` }}
-                            >
-                              {currentPageWinners.map((winner, idx) => (
-                                <motion.div
-                                  key={winner.id}
-                                  initial={{ opacity: 0, y: 30 }}
-                                  animate={{ opacity: 1, y: 0 }}
-                                  transition={{ delay: idx * 0.03, type: "spring" }}
-                                  className="relative group"
-                                >
-                                  <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 via-red-950/20 to-yellow-600/5 blur-2xl rounded-2xl group-hover:blur-3xl transition-all duration-500" />
-                                  <div className={`relative bg-zinc-950/65 backdrop-blur-xl border border-yellow-500/25 ${winnerCardPadding} rounded-2xl flex flex-col items-center justify-center text-center hover:border-yellow-500/80 transition-all duration-500 shadow-[0_4px_20px_rgba(0,0,0,0.6),0_0_15px_rgba(234,179,8,0.05)] hover:shadow-[0_20px_40px_rgba(234,179,8,0.25),0_0_30px_rgba(234,179,8,0.1)] hover:-translate-y-2.5 overflow-hidden group cursor-default min-h-[120px]`}>
-                                    {/* Shimmer sweep effect */}
-                                    <div className="absolute inset-0 w-[200%] h-full bg-gradient-to-r from-transparent via-yellow-500/5 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] pointer-events-none" style={{ backgroundImage: 'linear-gradient(120deg, transparent 30%, rgba(234,179,8,0.1) 40%, rgba(234,179,8,0.15) 50%, rgba(234,179,8,0.1) 60%, transparent 70%)', backgroundSize: '200% 100%' }} />
-                                    
-                                    <div className={`${winnerNameClass} font-bold text-white font-cinzel drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] leading-tight break-words tracking-wide group-hover:text-yellow-100 transition-colors`}>{winner.name}</div>
-                                    {settings.showDept && winner.dept && (
-                                      <div className="text-yellow-400/90 text-sm md:text-base mt-2.5 font-medium drop-shadow-md tracking-wider">{winner.dept}</div>
-                                    )}
-                                  </div>
-                                </motion.div>
-                              ))}
-                            </div>
-                          </motion.div>
-                        </AnimatePresence>
-                      ) : (
-                        <div
-                          className="grid gap-4 w-full"
-                          style={{ gridTemplateColumns: `repeat(auto-fit, minmax(${winnerCardMinWidth}px, 1fr))` }}
-                        >
-                          {currentWinners.map((winner, idx) => (
-                            <motion.div
-                              key={winner.id}
-                              initial={{ opacity: 0, y: 30 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.05, type: "spring" }}
-                              className="relative group"
-                            >
-                              <div className="absolute inset-0 bg-gradient-to-br from-yellow-500/10 via-red-950/20 to-yellow-600/5 blur-2xl rounded-2xl group-hover:blur-3xl transition-all duration-500" />
-                              <div className={`relative bg-zinc-950/65 backdrop-blur-xl border border-yellow-500/25 ${winnerCardPadding} rounded-2xl flex flex-col items-center justify-center text-center hover:border-yellow-500/80 transition-all duration-500 shadow-[0_4px_20px_rgba(0,0,0,0.6),0_0_15px_rgba(234,179,8,0.05)] hover:shadow-[0_20px_40px_rgba(234,179,8,0.25),0_0_30px_rgba(234,179,8,0.1)] hover:-translate-y-2.5 overflow-hidden group cursor-default min-h-[120px]`}>
-                                {/* Shimmer sweep effect */}
-                                <div className="absolute inset-0 w-[200%] h-full bg-gradient-to-r from-transparent via-yellow-500/5 to-transparent -translate-x-full group-hover:animate-[shimmer_1.5s_infinite] pointer-events-none" style={{ backgroundImage: 'linear-gradient(120deg, transparent 30%, rgba(234,179,8,0.1) 40%, rgba(234,179,8,0.15) 50%, rgba(234,179,8,0.1) 60%, transparent 70%)', backgroundSize: '200% 100%' }} />
-                                
-                                <div className={`${winnerNameClass} font-bold text-white font-cinzel drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] leading-tight break-words tracking-wide group-hover:text-yellow-100 transition-colors`}>{winner.name}</div>
-                                {settings.showDept && winner.dept && (
-                                  <div className="text-yellow-400/90 text-sm md:text-base mt-2.5 font-medium drop-shadow-md tracking-wider">{winner.dept}</div>
-                                )}
-                              </div>
-                            </motion.div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    // Rolling State
-                    <motion.div 
-                      key="rolling"
-                      className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 w-full opacity-80"
-                    >
-                      {displayNames.slice(0, 12).map((item, i) => (
-                        <div key={i} className="bg-white/5 backdrop-blur-sm border border-white/10 p-6 rounded-lg flex flex-col items-center justify-center min-h-[100px]">
-                           <span className={cn(
-                             "text-3xl font-bold text-white/90 font-mono transition-all duration-75",
-                             isAnimating && "blur-[1px] scale-105"
-                           )}>
-                             {item.name}
-                           </span>
-                           {settings.showDept && item.dept && (
-                             <span className="text-white/60 text-xs mt-1.5 block font-sans">{item.dept}</span>
-                           )}
-                        </div>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Edge page turns and bottom indicators for Page Scroll Mode */}
-              {showWinners && scrollMode === 'page' && totalPages > 1 && (
-                <>
-                  {/* Left Arrow Button */}
-                  {currentPage > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage(prev => Math.max(prev - 1, 0))}
-                      className="absolute left-6 top-1/2 -translate-y-1/2 z-30 bg-black/60 hover:bg-yellow-500/20 text-yellow-500 hover:text-yellow-400 border border-yellow-500/40 hover:border-yellow-500 w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 backdrop-blur shadow-[0_0_15px_rgba(255,215,0,0.15)] hover:shadow-[0_0_25px_rgba(255,215,0,0.45)] group cursor-pointer"
-                    >
-                      <ChevronLeft className="w-8 h-8 group-hover:scale-110 transition-transform" />
-                    </button>
-                  )}
-
-                  {/* Right Arrow Button */}
-                  {currentPage < totalPages - 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1))}
-                      className="absolute right-6 top-1/2 -translate-y-1/2 z-30 bg-black/60 hover:bg-yellow-500/20 text-yellow-500 hover:text-yellow-400 border border-yellow-500/40 hover:border-yellow-500 w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 backdrop-blur shadow-[0_0_15px_rgba(255,215,0,0.15)] hover:shadow-[0_0_25px_rgba(255,215,0,0.45)] group cursor-pointer"
-                    >
-                      <ChevronRight className="w-8 h-8 group-hover:scale-110 transition-transform" />
-                    </button>
-                  )}
-
-                  {/* Bottom Dot Indicators */}
-                  <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-black/60 px-5 py-2.5 rounded-full border border-yellow-500/30 backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.8)]">
-                    {Array.from({ length: totalPages }).map((_, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setCurrentPage(idx)}
-                        className={cn(
-                          "transition-all duration-500 ease-out cursor-pointer h-2.5 rounded-full",
-                          idx === currentPage 
-                            ? "bg-gradient-to-r from-yellow-400 to-amber-500 w-8 shadow-[0_0_12px_rgba(250,204,21,0.6)]" 
-                            : "bg-white/20 hover:bg-white/40 w-2.5"
-                        )}
-                      />
-                    ))}
-                    <span className="text-yellow-500/80 text-sm font-mono font-bold ml-2 select-none">
-                      {currentPage + 1} / {totalPages}
-                    </span>
-                  </div>
-                </>
-              )}
+              <DrawStage />
             </motion.div>
           )}
 
